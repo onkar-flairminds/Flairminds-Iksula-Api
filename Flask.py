@@ -8,7 +8,7 @@ import re
 from fuzzywuzzy import fuzz
 import mysql.connector as connection
 
-from flask import Flask, request
+from flask import Flask, request, jsonify
 
 try:
     mydb = connection.connect(host="localhost", database = 'iksula',user="root", passwd="Pass@123",use_pure=True)
@@ -91,61 +91,78 @@ def applyDictionaryLogic(pid, pid_2_list, prod_pid, prod_df, identifier, exactAt
 
 @app.route('/get_results', methods = ['POST'])
 def Run():
-    request_data = request.data.decode()
-    test = pd.read_json(request_data)
-    print(type(test), test)
-    global Dict
-    Dict = {}
-    global Similarity_Dict
-    Similarity_Dict = {}
+    request_data = pd.io.json.loads(request.data)
+    
+    try:
+        # request_data = eval(pd.io.json.loads(request.data))
+        # data_df = pd.read_json(request_data)
+        request_data = request.json
+        test = pd.json_normalize(request_data['data'])
+        
+        global Dict
+        Dict = {}
+        global Similarity_Dict
+        Similarity_Dict = {}
 
-    if test['data_type'].iloc[0]=='customer':
-        exactAtt = ['first_name', 'last_name', 'zip', 'phone1', 'phone2', 'email', 'web']
-        fuzzyAtt = ['company_name', 'address', 'city', 'county', 'state']
-        Attributes = exactAtt + fuzzyAtt
-        prod_pid = test
-        identifier = 'id'
-        prod_pid.apply(lambda x : applyDictionaryLogic(x[identifier], customer[customer[identifier]!=x[identifier]][identifier], prod_pid, customer, identifier, exactAtt, fuzzyAtt, Attributes)
-                    , axis = 1)
-        Dataframe = pd.DataFrame()
-        for PID in Dict.keys():
-            Prod = []
-            for pid_2 in Dict[PID]:
-                prod_1 = prod_pid[prod_pid[identifier]==PID]
-                prod_1['matching_score'] = Similarity_Dict['{}:{}'.format(PID, pid_2)]['matching_score']
-                prod_1['matching_{}'.format(identifier)] = pid_2
-                prod_1['matching_attributes'] = pd.io.json.dumps(Similarity_Dict['{}:{}'.format(PID, pid_2)]['matching_attributes'])
-                Prod.append(prod_1)
-            if Prod!=[]:
-                Dataframe = pd.concat(Prod)
-    elif test['data_type'].iloc[0]=='product':
-        exactAtt = ['parent_leaf_guid', 'file_path','mfg_brand_name', 'model_number', 'product_name_120', 'parts_accessories_type',
-                'product_length_in', 'downrod_length_in','product_length_in', 'downrod_length_in', 'material',
-                'product_height_in', 'product_depth_in',
-                'product_weight-lb','product_width_in', 'product_diameter_in']
-        fuzzyAtt = ['marketing_copy_1500','bullet01', 'bullet02', 'bullet03', 'bullet04',
-            'bullet05','manufacturer_warranty', 'bullet06',
-            'california_title_20_compliant', 'shade_shape', 'shade_fitter_type',
-            'shade_color_family', 'lighting_product_type',
-            'certifications_and_listings', 'fixture_color_finish_family',
-            'lamp_shade_material','color_finish']
-        Attributes = exactAtt + fuzzyAtt
-        prod_pid = test
-        identifier = 'id'
-        prod_pid.apply(lambda x : applyDictionaryLogic(x[identifier], product[product[identifier]!=x[identifier]][identifier], prod_pid, product, identifier, exactAtt, fuzzyAtt, Attributes)
-                    , axis = 1)
-        Dataframe = pd.DataFrame()
-        for PID in Dict.keys():
-            Prod = []
-            for pid_2 in Dict[PID]:
-                prod_1 = prod_pid[prod_pid[identifier]==PID]
-                prod_1['matching_score'] = Similarity_Dict['{}:{}'.format(PID, pid_2)]['matching_score']
-                prod_1['matching_{}'.format(identifier)] = pid_2
-                prod_1['matching_attributes'] = pd.io.json.dumps(Similarity_Dict['{}:{}'.format(PID, pid_2)]['matching_attributes'])
-                Prod.append(prod_1)
-            if Prod!=[]:
-                Dataframe = pd.concat(Prod)
-    return Dataframe.to_json(orient = 'records')
+        if test['data_type'].iloc[0]=='customer':
+            # exactAtt = ['phone1', 'phone2', 'email']
+            # fuzzyAtt = ['first_name', 'last_name', 'zip', 'company_name', 'address', 'city', 'county', 'state']
+            exactAtt = request_data['exact']
+            fuzzyAtt = request_data['similar']
+            Attributes = exactAtt + fuzzyAtt
+            prod_pid = test
+            identifier = 'id'
+            prod_pid.apply(lambda x : applyDictionaryLogic(x[identifier], customer[customer[identifier]!=x[identifier]][identifier], prod_pid, customer, identifier, exactAtt, fuzzyAtt, Attributes)
+                        , axis = 1)
+            Dataframe = pd.DataFrame()
+            for PID in Dict.keys():
+                Prod = []
+                for pid_2 in Dict[PID]:
+                    prod_1 = prod_pid[prod_pid[identifier]==PID]
+                    prod_1['matching_score'] = Similarity_Dict['{}:{}'.format(PID, pid_2)]['matching_score']
+                    prod_1['matching_{}'.format(identifier)] = pid_2
+                    prod_1['matching_attributes'] = pd.io.json.dumps(Similarity_Dict['{}:{}'.format(PID, pid_2)]['matching_attributes'])
+                    Prod.append(prod_1)
+                if Prod!=[]:
+                    Dataframe = pd.concat(Prod)
+        elif test['data_type'].iloc[0]=='product':
+            # exactAtt = ['model_number', 'id']
+            # fuzzyAtt = ['parent_leaf_guid', 'product_name_120', 'mfg_brand_name', 'marketing_copy_1500','bullet01', 'bullet02', 'bullet03', 'bullet04',
+            #     'bullet05','manufacturer_warranty', 'bullet06',
+            #     'california_title_20_compliant', 'shade_shape', 'shade_fitter_type',
+            #     'shade_color_family', 'lighting_product_type',
+            #     'certifications_and_listings', 'fixture_color_finish_family',
+            #     'lamp_shade_material','color_finish', 'parts_accessories_type',
+            #     'product_length_in', 'downrod_length_in','product_length_in', 'downrod_length_in', 'material',
+            #     'product_height_in', 'product_depth_in',
+            #     'product_weight-lb','product_width_in', 'product_diameter_in']
+            exactAtt = request_data['exact']
+            fuzzyAtt = request_data['similar']
+            print(exactAtt, fuzzyAtt)
+            print(test)
+            Attributes = exactAtt + fuzzyAtt
+            prod_pid = test
+            identifier = 'id'
+            prod_pid.apply(lambda x : applyDictionaryLogic(x[identifier], product[product[identifier]!=x[identifier]][identifier], prod_pid, product, identifier, exactAtt, fuzzyAtt, Attributes)
+                        , axis = 1)
+            Dataframe = pd.DataFrame()
+            for PID in Dict.keys():
+                Prod = []
+                for pid_2 in Dict[PID]:
+                    prod_1 = prod_pid[prod_pid[identifier]==PID]
+                    prod_1['matching_score'] = Similarity_Dict['{}:{}'.format(PID, pid_2)]['matching_score']
+                    prod_1['matching_{}'.format(identifier)] = pid_2
+                    prod_1['matching_attributes'] = pd.io.json.dumps(Similarity_Dict['{}:{}'.format(PID, pid_2)]['matching_attributes'])
+                    Prod.append(prod_1)
+                if Prod!=[]:
+                    Dataframe = pd.concat(Prod)
+        return jsonify(Dataframe.to_json(orient = 'records'))
+    except Exception as e:
+        dict = {
+            'Error' : str(e),
+            'check' : request_data
+        }
+        return jsonify(dict)
 
 
 if __name__ == '__main__':

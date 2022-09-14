@@ -100,7 +100,7 @@ def applyDictionaryLogic(pid, pid_2_list, prod_pid, prod_df, identifier, exactAt
         if exactScore==1.0:
             Matching_Score = 1.0
         else:
-            Matching_Score = round((3*(exactScore) + 2*(fuzzyScore))/5 , 4)
+            Matching_Score = round(fuzzyScore , 4)
         # if Matching_Score > 0.70:
         matching_Score_Dict['{}'.format(pid_2)] = Matching_Score
         matching_Attributes_Dict['{}'.format(pid_2)] = matching_attributes

@@ -130,6 +130,7 @@ def Run():
                 prod_pid.apply(lambda x : applyDictionaryLogic(x[identifier], customer[customer[filter]==x[filter]][identifier], prod_pid, customer, identifier, exactAtt, fuzzyAtt, Attributes)
                             , axis = 1)
             Dataframe = pd.DataFrame()
+            print(Dict)
             for PID in Dict.keys():
                 Prod = []
                 for pid_2 in Dict[PID]:
@@ -139,7 +140,7 @@ def Run():
                     prod_1['matching_attributes'] = pd.io.json.dumps(Similarity_Dict['{}:{}'.format(PID, pid_2)]['matching_attributes'])
                     Prod.append(prod_1)
                 if Prod!=[]:
-                    Dataframe = pd.concat(Prod)
+                    Dataframe = Dataframe.append( pd.concat(Prod) , ignore_index = True )
         elif test['data_type'].iloc[0]=='product':
             # exactAtt = ['model_number', 'id']
             # fuzzyAtt = ['parent_leaf_guid', 'product_name_120', 'mfg_brand_name', 'marketing_copy_1500','bullet01', 'bullet02', 'bullet03', 'bullet04',
@@ -173,7 +174,7 @@ def Run():
                     prod_1['matching_attributes'] = pd.io.json.dumps(Similarity_Dict['{}:{}'.format(PID, pid_2)]['matching_attributes'])
                     Prod.append(prod_1)
                 if Prod!=[]:
-                    Dataframe = pd.concat(Prod)
+                    Dataframe = Dataframe.append( pd.concat(Prod) , ignore_index = True )
         return jsonify(Dataframe.to_json(orient = 'records'))
     except Exception as e:
         dict = {

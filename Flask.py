@@ -10,7 +10,7 @@ from fuzzywuzzy import fuzz
 try:
     import Levenshtein
 except:
-    os.system('pip install python-Levenshtein')
+    os.system('pip3 install python-Levenshtein')
     import Levenshtein
 import mysql.connector as connection
 

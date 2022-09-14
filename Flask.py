@@ -5,7 +5,13 @@ import pandas as pd
 import numpy as np
 import datetime
 import re
+import os
 from fuzzywuzzy import fuzz
+try:
+    import Levenshtein
+except:
+    os.system('pip install python-Levenshtein')
+    import Levenshtein
 import mysql.connector as connection
 
 from flask import Flask, request, jsonify
@@ -137,7 +143,6 @@ def Run():
                 prod_pid.apply(lambda x : applyDictionaryLogic(x[identifier], customer[customer[filter]==x[filter]][identifier], prod_pid, customer, identifier, exactAtt, fuzzyAtt, Attributes)
                             , axis = 1)
             Dataframe = pd.DataFrame()
-            print(Dict)
             for PID in Dict.keys():
                 Prod = []
                 for pid_2 in Dict[PID]:

@@ -74,7 +74,7 @@ def applyDictionaryLogic(pid, pid_2_list, prod_pid, prod_df, identifier, exactAt
                     matching_attributes.append(att_dict)
             if att in fuzzyAtt:
                 score = (fuzz.token_set_ratio( str(prod_1[att]).lower(), str(prod_2[att]).lower()  ) )*0.01
-                if score>0.95:
+                if score>0.90:
                     fuzzyAttMatched.append(str(att))
                     att_dict['attributes_name'] = str(att)
                     att_dict['current_value'] = str(prod_1[att])
@@ -84,7 +84,10 @@ def applyDictionaryLogic(pid, pid_2_list, prod_pid, prod_df, identifier, exactAt
         exactScore = exactAttScore 
         fuzzyScore = len(fuzzyAttMatched)/len(fuzzyAtt)
         
-        Matching_Score = round((3*(exactScore) + 2*(fuzzyScore))/5 , 4)
+        if exactScore==1.0:
+            Matching_Score = 1.0
+        else:
+            Matching_Score = round((3*(exactScore) + 2*(fuzzyScore))/5 , 4)
         # if Matching_Score > 0.70:
         matching_Score_Dict['{}'.format(pid_2)] = Matching_Score
         matching_Attributes_Dict['{}'.format(pid_2)] = matching_attributes

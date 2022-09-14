@@ -61,6 +61,8 @@ def applyDictionaryLogic(pid, pid_2_list, prod_pid, prod_df, identifier, exactAt
             att_dict = {}
             if str(prod_1[att])=='nan' or prod_2[att]=='nan':
                 continue
+            if str(prod_1[att])=='' or prod_2[att]=='':
+                continue
             if att in exactAtt:
                 if str(prod_1[att]).strip()==str(prod_2[att]).strip():
                     exactAttMatched.append(str(att))

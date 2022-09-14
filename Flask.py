@@ -31,28 +31,29 @@ app = Flask(__name__)
 
 def applyDictionaryLogic(pid, pid_2_list, prod_pid, prod_df, identifier, exactAtt, fuzzyAtt, Attributes):
     pid_2_list = np.array(pid_2_list)
-    if (pid in Dict.keys()):
-        return None
-    else:
-        for key in Dict.keys():
-            if pid in Dict[key]:
-                return None
+    # if (pid in Dict.keys()):
+    #     return None
+    # else:
+    for key in Dict.keys():
+        if pid in Dict[key]:
+            return None
     Dict[pid] = []
     
+    matching_Score_Dict = {}
+    matching_Attributes_Dict = {}
     for pid_2 in pid_2_list:
 
-        if (pid_2 in Dict.keys()):
-            return None
-        else:
-            for key in Dict.keys():
-                if pid_2 in Dict[key]:
-                    return None
+        # if (pid_2 in Dict.keys()):
+        #     return None
+        # else:
+        for key in Dict.keys():
+            if pid_2 in Dict[key]:
+                return None
                 
         prod_1 = prod_pid[prod_pid[identifier]==pid].iloc[0]
         prod_2 = prod_df[prod_df[identifier]==pid_2].iloc[0]
-        exactAttMatched_List = ' | '
+        exactAttScore = 0
         exactAttMatched = []
-        fuzzyAttmatched_List = ' | '
         fuzzyAttMatched = []
         matching_attributes = []
         
@@ -62,32 +63,36 @@ def applyDictionaryLogic(pid, pid_2_list, prod_pid, prod_df, identifier, exactAt
                 continue
             if att in exactAtt:
                 if str(prod_1[att]).strip()==str(prod_2[att]).strip():
-                    exactAttMatched_List += '{} | '.format(str(att))
                     exactAttMatched.append(str(att))
                     att_dict['attributes_name'] = str(att)
                     att_dict['current_value'] = str(prod_1[att])
                     att_dict['found_value'] = str(prod_2[att])
-                    att_dict['score'] = 1.0
+                    att_dict['score'] = 1.0 
+                    exactAttScore = 1.0
                     matching_attributes.append(att_dict)
             if att in fuzzyAtt:
                 score = (fuzz.token_set_ratio( str(prod_1[att]).lower(), str(prod_2[att]).lower()  ) )*0.01
                 if score>0.95:
-                    fuzzyAttmatched_List += '{} | '.format(str(att))
                     fuzzyAttMatched.append(str(att))
                     att_dict['attributes_name'] = str(att)
                     att_dict['current_value'] = str(prod_1[att])
                     att_dict['found_value'] = str(prod_2[att])
                     att_dict['score'] = round(score,4)
                     matching_attributes.append(att_dict)
-        exactScore = len(exactAttMatched)/len(exactAtt)
+        exactScore = exactAttScore 
         fuzzyScore = len(fuzzyAttMatched)/len(fuzzyAtt)
         
         Matching_Score = round((3*(exactScore) + 2*(fuzzyScore))/5 , 4)
-        if Matching_Score > 0.70:
-            Dict[pid].append(pid_2)
-            Similarity_Dict['{}:{}'.format(pid, pid_2)] = {}
-            Similarity_Dict['{}:{}'.format(pid, pid_2)]['matching_attributes'] = matching_attributes
-            Similarity_Dict['{}:{}'.format(pid, pid_2)]['matching_score'] = Matching_Score
+        # if Matching_Score > 0.70:
+        matching_Score_Dict['{}'.format(pid_2)] = Matching_Score
+        matching_Attributes_Dict['{}'.format(pid_2)] = matching_attributes
+
+    pid_2_keys = sorted(matching_Score_Dict, key=matching_Score_Dict.get, reverse=True)[:3]
+    for pid_2 in pid_2_keys:
+        Dict[pid].append(pid_2)
+        Similarity_Dict['{}:{}'.format(pid, pid_2)] = {}
+        Similarity_Dict['{}:{}'.format(pid, pid_2)]['matching_attributes'] = matching_Attributes_Dict['{}'.format(pid_2)]
+        Similarity_Dict['{}:{}'.format(pid, pid_2)]['matching_score'] = matching_Score_Dict['{}'.format(pid_2)]
 
 @app.route('/get_results', methods = ['POST'])
 def Run():
@@ -97,7 +102,8 @@ def Run():
         # request_data = eval(pd.io.json.loads(request.data))
         # data_df = pd.read_json(request_data)
         request_data = request.json
-        test = pd.json_normalize(request_data['data'])
+        test = pd.io.json.json_normalize(request_data['data'])
+        filter = request_data['filter']
         
         global Dict
         Dict = {}
@@ -112,8 +118,12 @@ def Run():
             Attributes = exactAtt + fuzzyAtt
             prod_pid = test
             identifier = 'id'
-            prod_pid.apply(lambda x : applyDictionaryLogic(x[identifier], customer[customer[identifier]!=x[identifier]][identifier], prod_pid, customer, identifier, exactAtt, fuzzyAtt, Attributes)
+            if filter=='':
+                prod_pid.apply(lambda x : applyDictionaryLogic(x[identifier], customer[identifier], prod_pid, customer, identifier, exactAtt, fuzzyAtt, Attributes)
                         , axis = 1)
+            else:
+                prod_pid.apply(lambda x : applyDictionaryLogic(x[identifier], customer[customer[filter]==x[filter]][identifier], prod_pid, customer, identifier, exactAtt, fuzzyAtt, Attributes)
+                            , axis = 1)
             Dataframe = pd.DataFrame()
             for PID in Dict.keys():
                 Prod = []
@@ -138,12 +148,15 @@ def Run():
             #     'product_weight-lb','product_width_in', 'product_diameter_in']
             exactAtt = request_data['exact']
             fuzzyAtt = request_data['similar']
-            print(exactAtt, fuzzyAtt)
-            print(test)
+
             Attributes = exactAtt + fuzzyAtt
             prod_pid = test
             identifier = 'id'
-            prod_pid.apply(lambda x : applyDictionaryLogic(x[identifier], product[product[identifier]!=x[identifier]][identifier], prod_pid, product, identifier, exactAtt, fuzzyAtt, Attributes)
+            if filter=='':
+                prod_pid.apply(lambda x : applyDictionaryLogic(x[identifier], product[identifier], prod_pid, product, identifier, exactAtt, fuzzyAtt, Attributes)
+                        , axis = 1)
+            else:
+                prod_pid.apply(lambda x : applyDictionaryLogic(x[identifier], product[product[filter]==x[filter]][identifier], prod_pid, product, identifier, exactAtt, fuzzyAtt, Attributes)
                         , axis = 1)
             Dataframe = pd.DataFrame()
             for PID in Dict.keys():

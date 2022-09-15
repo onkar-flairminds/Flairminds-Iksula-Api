@@ -78,6 +78,7 @@ def applyDictionaryLogic(pid, pid_2_list, prod_pid, prod_df, identifier, exactAt
                     att_dict['score'] = 1.0 
                     exactAttScore = 1.0
                     matching_attributes.append(att_dict)
+                    break
                 else:
                     att_dict['attributes_name'] = str(att)
                     att_dict['current_value'] = str(prod_1[att])

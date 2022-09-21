@@ -195,14 +195,13 @@ def applyDictionaryLogic(pid, pid_2_list, prod_pid, prod_df, identifier, exactAt
                     score = JackardSimilarity(stringArray1, stringArray2)
                     
                     matching_attributes.append(att_dict)
-                    if score > 0.75:
-                        att_dict['attributes_name'] = str(att)
-                        att_dict['current_value'] = str(prod_1[att])
-                        att_dict['found_value'] = str(prod_2[att])
-                        att_dict['score'] = score
-                        fuzzyAttMatched.append(str(att))
+                    # if score > 0.75:
+                    att_dict['attributes_name'] = str(att)
+                    att_dict['current_value'] = str(prod_1[att])
+                    att_dict['found_value'] = str(prod_2[att])
+                    att_dict['score'] = score
+                    fuzzyAttMatched.append(str(att))
 
-                    
         exactScore = exactAttScore 
         fuzzyScore = len(fuzzyAttMatched)/len(fuzzyAtt)
         
@@ -215,11 +214,14 @@ def applyDictionaryLogic(pid, pid_2_list, prod_pid, prod_df, identifier, exactAt
         matching_Attributes_Dict['{}'.format(pid_2)] = matching_attributes
 
     pid_2_keys = sorted(matching_Score_Dict, key=matching_Score_Dict.get, reverse=True)[:3]
+
     for pid_2 in pid_2_keys:
-        Dict[pid].append(pid_2)
-        Similarity_Dict['{}:{}'.format(pid, pid_2)] = {}
-        Similarity_Dict['{}:{}'.format(pid, pid_2)]['matching_attributes'] = matching_Attributes_Dict['{}'.format(pid_2)]
-        Similarity_Dict['{}:{}'.format(pid, pid_2)]['matching_score'] = matching_Score_Dict['{}'.format(pid_2)]
+        matching_score = matching_Score_Dict['{}'.format(pid_2)]
+        if matching_score!=0:
+            Dict[pid].append(pid_2)
+            Similarity_Dict['{}:{}'.format(pid, pid_2)] = {}
+            Similarity_Dict['{}:{}'.format(pid, pid_2)]['matching_attributes'] = matching_Attributes_Dict['{}'.format(pid_2)]
+            Similarity_Dict['{}:{}'.format(pid, pid_2)]['matching_score'] = matching_score
 
 @app.route('/get_results', methods = ['POST'])
 def Run():
@@ -245,7 +247,6 @@ def Run():
             Attributes = exactAtt + fuzzyAtt
             prod_pid = test
             identifier = 'id'
-            print('In')
             if filter=='':
                 prod_pid.apply(lambda x : applyDictionaryLogic(x[identifier], customer[identifier], prod_pid, customer, identifier, exactAtt, fuzzyAtt, Attributes, similar_exact,phone_fields)
                         , axis = 1)

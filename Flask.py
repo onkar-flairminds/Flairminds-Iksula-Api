@@ -50,13 +50,15 @@ def exactSimilarMatch(string1, string2):
 
 def stringToWords(string):
     string = string.lower()
-    return re.split(r'[ ,,]', string)
+    string = string.translate(str.maketrans('', '', punctuation))
+    return_Array = [ word.strip() for word in re.split(r'[ ,,]', string)]
+    return return_Array
 
 def JackardSimilarity(stringArray1, stringArray2):
-    stringArray1 = list(set(stringArray1))
-    stringArray2 = list(set(stringArray2))
-    TotalWords = len(list(stringArray1+stringArray2))/2
-    CommonWords = len(np.intersect1d(np.array(stringArray1), np.array(stringArray2)))
+    stringArray1 = set(stringArray1)
+    stringArray2 = set(stringArray2)
+    TotalWords = len(set.union(stringArray1, stringArray2 ))
+    CommonWords = len( stringArray1.intersection(stringArray2) )
     Score = CommonWords / TotalWords
     return round(Score, 4)
 
@@ -90,9 +92,13 @@ def cleanShadeShape(string):
     cleaned = cleaned.split(',')
     return cleaned
 
+# Preprocessing
+def PreProcesscustomer(customer):
+    pass
+def PreprocessProduct(product):
+    pass
 
-
-def applyDictionaryLogic(pid, pid_2_list, prod_pid, prod_df, identifier, exactAtt, fuzzyAtt, Attributes, similar_exact, phone_fields):
+def applyDictionaryLogic(pid, pid_2_list, prod_pid, prod_df, identifier, exactAtt, fuzzyAtt, Attributes, similar_exact, phone_fields,group1,group2,group3):
     pid_2_list = np.array(pid_2_list)
     # if (pid in Dict.keys()):
     #     return None
@@ -106,14 +112,12 @@ def applyDictionaryLogic(pid, pid_2_list, prod_pid, prod_df, identifier, exactAt
     matching_Score_Dict = {}
     matching_Attributes_Dict = {}
     for pid_2 in pid_2_list:
-
         # if (pid_2 in Dict.keys()):
         #     return None
         # else:
         # for key in Dict.keys():
         #     if pid_2 in Dict[key]:
         #         return None
-                
         prod_1 = prod_pid[prod_pid[identifier]==pid].iloc[0]
         prod_2 = prod_df[prod_df[identifier]==pid_2].iloc[0]
         exactAttScore = 0
@@ -141,7 +145,7 @@ def applyDictionaryLogic(pid, pid_2_list, prod_pid, prod_df, identifier, exactAt
                     att_dict['attributes_name'] = str(att)
                     att_dict['current_value'] = str(prod_1[att])
                     att_dict['found_value'] = str(prod_2[att])
-                    att_dict['score'] = 1.0 
+                    att_dict['score'] = 1.0
                     exactAttScore = 1.0
                     matching_attributes.append(att_dict)
                     break
@@ -195,14 +199,14 @@ def applyDictionaryLogic(pid, pid_2_list, prod_pid, prod_df, identifier, exactAt
                     score = JackardSimilarity(stringArray1, stringArray2)
                     
                     matching_attributes.append(att_dict)
-                    # if score > 0.75:
                     att_dict['attributes_name'] = str(att)
                     att_dict['current_value'] = str(prod_1[att])
                     att_dict['found_value'] = str(prod_2[att])
                     att_dict['score'] = score
-                    fuzzyAttMatched.append(str(att))
+                    if score > 0.75:
+                        fuzzyAttMatched.append(str(att))
 
-        exactScore = exactAttScore 
+        exactScore = exactAttScore
         fuzzyScore = len(fuzzyAttMatched)/len(fuzzyAtt)
         
         if exactScore==1.0:
@@ -233,14 +237,19 @@ def Run():
         request_data = request.json
         test = pd.io.json.json_normalize(request_data['data'])
         filter = request_data['filter']
-        
+        type1 = request_data['action-group']['type1']
+        type2 = request_data['action-group']['type2']
+        type3 = request_data['action-group']['type3']
+        group1 = type1['data']
+        group2 = type2['data']
+        group3 = type3['data']
         global Dict
         Dict = {}
         global Similarity_Dict
         Similarity_Dict = {}
 
         if test['data_type'].iloc[0]=='customer':
-            similar_exact = ['zip','city','country','state','first_name','last_name']
+            similar_exact = ['zip','city','country','state']
             phone_fields = ['phone1', 'phone2']
             exactAtt = request_data['exact']
             fuzzyAtt = request_data['similar']
@@ -248,10 +257,10 @@ def Run():
             prod_pid = test
             identifier = 'id'
             if filter=='':
-                prod_pid.apply(lambda x : applyDictionaryLogic(x[identifier], customer[identifier], prod_pid, customer, identifier, exactAtt, fuzzyAtt, Attributes, similar_exact,phone_fields)
+                prod_pid.apply(lambda x : applyDictionaryLogic(x[identifier], customer[identifier], prod_pid, customer, identifier, exactAtt, fuzzyAtt, Attributes, similar_exact,phone_fields, group1, group2,group3)
                         , axis = 1)
             else:
-                prod_pid.apply(lambda x : applyDictionaryLogic(x[identifier], customer[customer[filter]==x[filter]][identifier], prod_pid, customer, identifier, exactAtt, fuzzyAtt, Attributes, similar_exact,phone_fields)
+                prod_pid.apply(lambda x : applyDictionaryLogic(x[identifier], customer[customer[filter]==x[filter]][identifier], prod_pid, customer, identifier, exactAtt, fuzzyAtt, Attributes, similar_exact,phone_fields,group1,group2,group3)
                             , axis = 1)
             Dataframe = pd.DataFrame()
             for PID in Dict.keys():
@@ -265,7 +274,6 @@ def Run():
                 if Prod!=[]:
                     Dataframe = Dataframe.append( pd.concat(Prod) , ignore_index = True )
         elif test['data_type'].iloc[0]=='product':
-            
             exactAtt = request_data['exact']
             fuzzyAtt = request_data['similar']
             similar_exact = ['parent_leaf_guid', 'mfg_brand_name', 'price', 'parts_accessories_type', 'product_length_in','manufacturer_warranty',
@@ -277,10 +285,10 @@ def Run():
             prod_pid = test
             identifier = 'id'
             if filter=='':
-                prod_pid.apply(lambda x : applyDictionaryLogic(x[identifier], product[identifier], prod_pid, product, identifier, exactAtt, fuzzyAtt, Attributes,similar_exact,phone_fields)
+                prod_pid.apply(lambda x : applyDictionaryLogic(x[identifier], product[identifier], prod_pid, product, identifier, exactAtt, fuzzyAtt, Attributes,similar_exact,phone_fields,group1,group2,group3)
                         , axis = 1)
             else:
-                prod_pid.apply(lambda x : applyDictionaryLogic(x[identifier], product[product[filter]==x[filter]][identifier], prod_pid, product, identifier, exactAtt, fuzzyAtt, Attributes,similar_exact,phone_fields)
+                prod_pid.apply(lambda x : applyDictionaryLogic(x[identifier], product[product[filter]==x[filter]][identifier], prod_pid, product, identifier, exactAtt, fuzzyAtt, Attributes,similar_exact,phone_fields,group1,group2,group3)
                         , axis = 1)
             Dataframe = pd.DataFrame()
             for PID in Dict.keys():
@@ -292,7 +300,7 @@ def Run():
                     prod_1['matching_attributes'] = pd.io.json.dumps(Similarity_Dict['{}:{}'.format(PID, pid_2)]['matching_attributes'])
                     Prod.append(prod_1)
                 if Prod!=[]:
-                    Dataframe = Dataframe.append( pd.concat(Prod) , ignore_index = True )
+                    Dataframe = pd.concat( [Dataframe, Prod] , ignore_index = True )
         return jsonify(Dataframe.to_json(orient = 'records'))
     except Exception as e:
         dict = {

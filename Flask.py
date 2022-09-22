@@ -98,7 +98,7 @@ def PreProcesscustomer(customer):
 def PreprocessProduct(product):
     pass
 
-def applyDictionaryLogic(pid, pid_2_list, prod_pid, prod_df, identifier, exactAtt, fuzzyAtt, Attributes, similar_exact, phone_fields,group1,group2,group3):
+def applyDictionaryLogic(pid, pid_2_list, prod_pid, prod_df, identifier, exactAtt, fuzzyAtt, Attributes, similar_exact, phone_fields):
     pid_2_list = np.array(pid_2_list)
     # if (pid in Dict.keys()):
     #     return None
@@ -237,12 +237,12 @@ def Run():
         request_data = request.json
         test = pd.io.json.json_normalize(request_data['data'])
         filter = request_data['filter']
-        type1 = request_data['action-group']['type1']
-        type2 = request_data['action-group']['type2']
-        type3 = request_data['action-group']['type3']
-        group1 = type1['data']
-        group2 = type2['data']
-        group3 = type3['data']
+        # type1 = request_data['action-group']['type1']
+        # type2 = request_data['action-group']['type2']
+        # type3 = request_data['action-group']['type3']
+        # group1 = type1['data']
+        # group2 = type2['data']
+        # group3 = type3['data']
         global Dict
         Dict = {}
         global Similarity_Dict
@@ -257,10 +257,10 @@ def Run():
             prod_pid = test
             identifier = 'id'
             if filter=='':
-                prod_pid.apply(lambda x : applyDictionaryLogic(x[identifier], customer[identifier], prod_pid, customer, identifier, exactAtt, fuzzyAtt, Attributes, similar_exact,phone_fields, group1, group2,group3)
+                prod_pid.apply(lambda x : applyDictionaryLogic(x[identifier], customer[identifier], prod_pid, customer, identifier, exactAtt, fuzzyAtt, Attributes, similar_exact,phone_fields )
                         , axis = 1)
             else:
-                prod_pid.apply(lambda x : applyDictionaryLogic(x[identifier], customer[customer[filter]==x[filter]][identifier], prod_pid, customer, identifier, exactAtt, fuzzyAtt, Attributes, similar_exact,phone_fields,group1,group2,group3)
+                prod_pid.apply(lambda x : applyDictionaryLogic(x[identifier], customer[customer[filter]==x[filter]][identifier], prod_pid, customer, identifier, exactAtt, fuzzyAtt, Attributes, similar_exact,phone_fields)
                             , axis = 1)
             Dataframe = pd.DataFrame()
             for PID in Dict.keys():
@@ -285,10 +285,10 @@ def Run():
             prod_pid = test
             identifier = 'id'
             if filter=='':
-                prod_pid.apply(lambda x : applyDictionaryLogic(x[identifier], product[identifier], prod_pid, product, identifier, exactAtt, fuzzyAtt, Attributes,similar_exact,phone_fields,group1,group2,group3)
+                prod_pid.apply(lambda x : applyDictionaryLogic(x[identifier], product[identifier], prod_pid, product, identifier, exactAtt, fuzzyAtt, Attributes,similar_exact,phone_fields)
                         , axis = 1)
             else:
-                prod_pid.apply(lambda x : applyDictionaryLogic(x[identifier], product[product[filter]==x[filter]][identifier], prod_pid, product, identifier, exactAtt, fuzzyAtt, Attributes,similar_exact,phone_fields,group1,group2,group3)
+                prod_pid.apply(lambda x : applyDictionaryLogic(x[identifier], product[product[filter]==x[filter]][identifier], prod_pid, product, identifier, exactAtt, fuzzyAtt, Attributes,similar_exact,phone_fields)
                         , axis = 1)
             Dataframe = pd.DataFrame()
             for PID in Dict.keys():

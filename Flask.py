@@ -1,5 +1,6 @@
 
 from typing import Dict
+from urllib.parse import ParseResultBytes
 import numpy as np
 import pandas as pd
 import numpy as np
@@ -36,11 +37,7 @@ except Exception as e:
 
 app = Flask(__name__)
 
-def cleanPhoneNumber(phone_number):
-    pattern = "[^\d]+"
-    cleaned_phone_number = re.sub(pattern,"", phone_number)[-9:]
-    return cleaned_phone_number
-    
+
 def exactSimilarMatch(string1, string2):
     string1 = string1.lower().strip()
     string2 = string2.lower().strip()
@@ -50,11 +47,11 @@ def exactSimilarMatch(string1, string2):
 
 def stringToWords(string):
     string = string.lower()
-    string = string.translate(str.maketrans('', '', punctuation))
-    return_Array = [ word.strip() for word in re.split(r'[ ,,]', string)]
+    string = re.sub(r'[^\w\s]', ' ', string)
+    return_Array = [ word.strip() for word in string.split()]
     return return_Array
 
-def JackardSimilarity(stringArray1, stringArray2):
+def JaccardSimilarity(stringArray1, stringArray2):
     stringArray1 = set(stringArray1)
     stringArray2 = set(stringArray2)
     TotalWords = len(set.union(stringArray1, stringArray2 ))
@@ -68,11 +65,17 @@ def cleanMfgBrand(string):
     pattern = "[-, ,/]"
     cleaned = re.sub(pattern,"", string)
     return cleaned.lower()
+def cleanPhoneNumber(phone_number):
+    pattern = "[^\d]+"
+    cleaned_phone_number = re.sub(pattern,"", phone_number)[-9:]
+    return cleaned_phone_number
 def cleanModelNumber(string):
     cleaned = string.lower()
     pattern = "[-, ,/]"
     cleaned = re.sub(pattern,"", cleaned)
     return cleaned
+def cleanEmailTail(string):
+    return re.sub(r'@.*', '', string)
 def cleanWarranty(string):
     cleaned = string.lower()
     pattern = "[(,)]"
@@ -98,7 +101,43 @@ def PreProcesscustomer(customer):
 def PreprocessProduct(product):
     pass
 
-def applyDictionaryLogic(pid, pid_2_list, prod_pid, prod_df, identifier, exactAtt, fuzzyAtt, Attributes, similar_exact, phone_fields):
+def groupmatching(att, matching_header, label, match_type, process, prod_1, prod_2, phone_fields, condition, group_array):
+    prod_val1 = str(prod_1[att]).strip()
+    att_group_dict = {}
+    att_group_dict['group_name'] = label
+    att_group_dict['field_name'] = att
+    att_group_dict['matching_fields'] = {}
+    score_list = []
+    for header in matching_header:
+        prod_val2 = str(prod_2[header]).strip()
+        if header in phone_fields:
+            prod_val1 = cleanPhoneNumber(prod_val1)
+            prod_val2 = cleanPhoneNumber(prod_val2)
+        if process=='email':
+            prod_val1 = cleanEmailTail(prod_val1)
+            prod_val2 = cleanEmailTail(prod_val2)
+        if match_type=="exact":
+            score = exactSimilarMatch(prod_val1, prod_val2)
+            att_group_dict['matching_fields'][header] = score
+            score_list.append(score)
+        elif match_type=="similar":
+            stringArray1 = stringToWords(str(prod_1[att]))
+            stringArray2 = stringToWords(str(prod_2[att]))
+            score = JaccardSimilarity(stringArray1, stringArray2)
+            att_group_dict['matching_fields'][header] = score
+            if score>condition:
+                score_list.append(score)
+
+    if len(score_list)!=0:
+        group_score = max(score_list)
+    else:
+        group_score = 0
+    att_group_dict['group_score'] = group_score
+    group_array.append(att_group_dict)
+    return group_score
+
+
+def applyDictionaryLogic(pid, pid_2_list, prod_pid, prod_df, identifier, exactAtt, fuzzyAtt, Attributes, similar_exact, phone_fields,group1,group2,group3, condition):
     pid_2_list = np.array(pid_2_list)
     # if (pid in Dict.keys()):
     #     return None
@@ -106,11 +145,12 @@ def applyDictionaryLogic(pid, pid_2_list, prod_pid, prod_df, identifier, exactAt
     # for key in Dict.keys():
     #     if pid in Dict[key]:
     #         return None
-
     Dict[pid] = []
-    
     matching_Score_Dict = {}
     matching_Attributes_Dict = {}
+    group1_att_dict = {}
+    group2_att_dict = {}
+    group3_att_dict = {}
     for pid_2 in pid_2_list:
         # if (pid_2 in Dict.keys()):
         #     return None
@@ -124,8 +164,15 @@ def applyDictionaryLogic(pid, pid_2_list, prod_pid, prod_df, identifier, exactAt
         exactAttMatched = []
         fuzzyAttMatched = []
         matching_attributes = []
+        group1_matching = []
+        group1_scores = []
+        group2_matching = []
+        group2_scores = []
+        group3_matching = []
+        group3_scores = []
         
         for att in Attributes:
+           
             att_dict = {}
             if str(prod_1[att])=='nan' or prod_2[att]=='nan':
                 continue
@@ -140,6 +187,7 @@ def applyDictionaryLogic(pid, pid_2_list, prod_pid, prod_df, identifier, exactAt
                 elif att=='model_number':
                     prod_val1 = cleanModelNumber(prod_val1)
                     prod_val2 = cleanModelNumber(prod_val2)
+                
                 if prod_val1==prod_val2:
                     exactAttMatched.append(str(att))
                     att_dict['attributes_name'] = str(att)
@@ -155,7 +203,13 @@ def applyDictionaryLogic(pid, pid_2_list, prod_pid, prod_df, identifier, exactAt
                     att_dict['found_value'] = str(prod_2[att])
                     att_dict['score'] = 0.0
                     matching_attributes.append(att_dict)
-
+            if att in group1['data']:
+                group1_scores.append(groupmatching(att, group1['data'], group1["label"], group1["match-type"], group1["process"], prod_1, prod_2,phone_fields, condition, group1_matching))
+            if att in group2['data']:
+                group2_scores.append(groupmatching(att, group2['data'], group2["label"], group2["match-type"], group2["process"], prod_1, prod_2,phone_fields, condition, group2_matching))
+            if att in group3['data']:
+                group3_scores.append(groupmatching(att, group3['data'], group3["label"], group3["match-type"], group3["process"], prod_1, prod_2,phone_fields, condition, group3_matching))
+            
             if att in fuzzyAtt:
                 # score = ( fuzz.token_sort_ratio( str(prod_1[att]).lower(), str(prod_2[att]).lower()  ) )*0.01
                 
@@ -196,14 +250,13 @@ def applyDictionaryLogic(pid, pid_2_list, prod_pid, prod_df, identifier, exactAt
                     if att == 'shade_shape':
                         stringArray1 = cleanShadeShape(str(prod_1[att]))
                         stringArray2 = cleanShadeShape(str(prod_2[att]))  
-                    score = JackardSimilarity(stringArray1, stringArray2)
-                    
-                    matching_attributes.append(att_dict)
+                    score = JaccardSimilarity(stringArray1, stringArray2)
                     att_dict['attributes_name'] = str(att)
                     att_dict['current_value'] = str(prod_1[att])
                     att_dict['found_value'] = str(prod_2[att])
                     att_dict['score'] = score
-                    if score > 0.75:
+                    matching_attributes.append(att_dict)
+                    if score > condition:
                         fuzzyAttMatched.append(str(att))
 
         exactScore = exactAttScore
@@ -212,10 +265,26 @@ def applyDictionaryLogic(pid, pid_2_list, prod_pid, prod_df, identifier, exactAt
         if exactScore==1.0:
             Matching_Score = 1.0
         else:
-            Matching_Score = round(fuzzyScore , 4)
+            if len(group1_scores)!=0:
+                group1_score = sum(group1_scores)/len(group1_scores)
+            else:
+                group1_score = 0
+            if len(group2_scores)!=0:
+                group2_score = sum(group2_scores)/len(group2_scores)
+            else:
+                group2_score = 0
+            if len(group3_scores)!=0:
+                group3_score = sum(group3_scores)/len(group3_scores)
+            else:
+                group3_score = 0
+            overall_score = (fuzzyScore + group1_score + group2_score + group3_score)/4
+            Matching_Score = round(overall_score , 4)
         # if Matching_Score > 0.70:
         matching_Score_Dict['{}'.format(pid_2)] = Matching_Score
         matching_Attributes_Dict['{}'.format(pid_2)] = matching_attributes
+        group1_att_dict['{}'.format(pid_2)] = group1_matching
+        group2_att_dict['{}'.format(pid_2)] = group2_matching
+        group3_att_dict['{}'.format(pid_2)] = group3_matching
 
     pid_2_keys = sorted(matching_Score_Dict, key=matching_Score_Dict.get, reverse=True)[:3]
 
@@ -226,20 +295,22 @@ def applyDictionaryLogic(pid, pid_2_list, prod_pid, prod_df, identifier, exactAt
             Similarity_Dict['{}:{}'.format(pid, pid_2)] = {}
             Similarity_Dict['{}:{}'.format(pid, pid_2)]['matching_attributes'] = matching_Attributes_Dict['{}'.format(pid_2)]
             Similarity_Dict['{}:{}'.format(pid, pid_2)]['matching_score'] = matching_score
+            Similarity_Dict['{}:{}'.format(pid, pid_2)]['group1_matching'] = group1_att_dict['{}'.format(pid_2)]
+            Similarity_Dict['{}:{}'.format(pid, pid_2)]['group2_matching'] = group2_att_dict['{}'.format(pid_2)]
+            Similarity_Dict['{}:{}'.format(pid, pid_2)]['group3_matching'] = group3_att_dict['{}'.format(pid_2)]
 
 @app.route('/get_results', methods = ['POST'])
 def Run():
     request_data = pd.io.json.loads(request.data)
-    
     try:
         # request_data = eval(pd.io.json.loads(request.data))
         # data_df = pd.read_json(request_data)
         request_data = request.json
         test = pd.io.json.json_normalize(request_data['data'])
         filter = request_data['filter']
-        # type1 = request_data['action-group']['type1']
-        # type2 = request_data['action-group']['type2']
-        # type3 = request_data['action-group']['type3']
+        group1 = request_data['action-group']['type1']
+        group2 = request_data['action-group']['type2']
+        group3 = request_data['action-group']['type3']
         # group1 = type1['data']
         # group2 = type2['data']
         # group3 = type3['data']
@@ -257,10 +328,10 @@ def Run():
             prod_pid = test
             identifier = 'id'
             if filter=='':
-                prod_pid.apply(lambda x : applyDictionaryLogic(x[identifier], customer[identifier], prod_pid, customer, identifier, exactAtt, fuzzyAtt, Attributes, similar_exact,phone_fields )
+                prod_pid.apply(lambda x : applyDictionaryLogic(x[identifier], customer[identifier], prod_pid, customer, identifier, exactAtt, fuzzyAtt, Attributes, similar_exact,phone_fields,group1,group2,group3,0.75)
                         , axis = 1)
             else:
-                prod_pid.apply(lambda x : applyDictionaryLogic(x[identifier], customer[customer[filter]==x[filter]][identifier], prod_pid, customer, identifier, exactAtt, fuzzyAtt, Attributes, similar_exact,phone_fields)
+                prod_pid.apply(lambda x : applyDictionaryLogic(x[identifier], customer[customer[filter]==x[filter]][identifier], prod_pid, customer, identifier, exactAtt, fuzzyAtt, Attributes, similar_exact,phone_fields,group1,group2,group3,0.75)
                             , axis = 1)
             Dataframe = pd.DataFrame()
             for PID in Dict.keys():
@@ -269,6 +340,9 @@ def Run():
                     prod_1 = prod_pid[prod_pid[identifier]==PID]
                     prod_1['matching_score'] = Similarity_Dict['{}:{}'.format(PID, pid_2)]['matching_score']
                     prod_1['matching_{}'.format(identifier)] = pid_2
+                    prod_1['group1_matching'] = pd.io.json.dumps(Similarity_Dict['{}:{}'.format(PID, pid_2)]['group1_matching'])
+                    prod_1['group2_matching'] = pd.io.json.dumps(Similarity_Dict['{}:{}'.format(PID, pid_2)]['group2_matching'])
+                    prod_1['group3_matching'] = pd.io.json.dumps(Similarity_Dict['{}:{}'.format(PID, pid_2)]['group3_matching'])
                     prod_1['matching_attributes'] = pd.io.json.dumps(Similarity_Dict['{}:{}'.format(PID, pid_2)]['matching_attributes'])
                     Prod.append(prod_1)
                 if Prod!=[]:
@@ -285,10 +359,10 @@ def Run():
             prod_pid = test
             identifier = 'id'
             if filter=='':
-                prod_pid.apply(lambda x : applyDictionaryLogic(x[identifier], product[identifier], prod_pid, product, identifier, exactAtt, fuzzyAtt, Attributes,similar_exact,phone_fields)
+                prod_pid.apply(lambda x : applyDictionaryLogic(x[identifier], product[identifier], prod_pid, product, identifier, exactAtt, fuzzyAtt, Attributes,similar_exact,phone_fields,group1,group2,group3,0.75)
                         , axis = 1)
             else:
-                prod_pid.apply(lambda x : applyDictionaryLogic(x[identifier], product[product[filter]==x[filter]][identifier], prod_pid, product, identifier, exactAtt, fuzzyAtt, Attributes,similar_exact,phone_fields)
+                prod_pid.apply(lambda x : applyDictionaryLogic(x[identifier], product[product[filter]==x[filter]][identifier], prod_pid, product, identifier, exactAtt, fuzzyAtt, Attributes,similar_exact,phone_fields,group1,group2,group3,0.75)
                         , axis = 1)
             Dataframe = pd.DataFrame()
             for PID in Dict.keys():
@@ -297,6 +371,9 @@ def Run():
                     prod_1 = prod_pid[prod_pid[identifier]==PID]
                     prod_1['matching_score'] = Similarity_Dict['{}:{}'.format(PID, pid_2)]['matching_score']
                     prod_1['matching_{}'.format(identifier)] = pid_2
+                    prod_1['group1_matching'] = pd.io.json.dumps(Similarity_Dict['{}:{}'.format(PID, pid_2)]['group1_matching'])
+                    prod_1['group2_matching'] = pd.io.json.dumps(Similarity_Dict['{}:{}'.format(PID, pid_2)]['group2_matching'])
+                    prod_1['group3_matching'] = pd.io.json.dumps(Similarity_Dict['{}:{}'.format(PID, pid_2)]['group3_matching'])
                     prod_1['matching_attributes'] = pd.io.json.dumps(Similarity_Dict['{}:{}'.format(PID, pid_2)]['matching_attributes'])
                     Prod.append(prod_1)
                 if Prod!=[]:
@@ -308,7 +385,6 @@ def Run():
             'check' : request_data
         }
         return jsonify(dict)
-
 
 if __name__ == '__main__':
     app.run(host = '0.0.0.0',port='5000',debug=True)

@@ -11,9 +11,12 @@ from fuzzywuzzy import fuzz
 from string import punctuation
 try:
     import Levenshtein
+    import phonenumbers
 except:
     os.system('pip3 install python-Levenshtein')
+    os.system('pip3 install phonenumbers')
     import Levenshtein
+    import phonenumbers
 import mysql.connector as connection
 
 from flask import Flask, request, jsonify
@@ -44,7 +47,12 @@ def exactSimilarMatch(string1, string2):
     if string1 == string2:
         return 1.0
     return 0.0
-
+def isValidPhoneNumber(phoneString):
+    try:
+        phoneString = "+40721234567"
+        number = phonenumbers.parse(phoneString)
+    except:
+        return False
 def stringToWords(string):
     string = string.lower()
     string = re.sub(r'[^\w\s]', ' ', string)

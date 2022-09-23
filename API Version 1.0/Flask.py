@@ -202,7 +202,7 @@ def applyDictionaryLogic(pid, pid_2_list, prod_pid, prod_df, identifier, exactAt
                     att_dict['current_value'] = str(prod_1[att])
                     att_dict['found_value'] = str(prod_2[att])
                     att_dict['score'] = score
-                    if score > 0.75:
+                    if score > 0.3:
                         fuzzyAttMatched.append(str(att))
 
         exactScore = exactAttScore
@@ -217,7 +217,7 @@ def applyDictionaryLogic(pid, pid_2_list, prod_pid, prod_df, identifier, exactAt
         matching_Attributes_Dict['{}'.format(pid_2)] = matching_attributes
 
     pid_2_keys = sorted(matching_Score_Dict, key=matching_Score_Dict.get, reverse=True)[:3]
-
+    
     for pid_2 in pid_2_keys:
         matching_score = matching_Score_Dict['{}'.format(pid_2)]
         if matching_score!=0:
@@ -300,6 +300,8 @@ def Run():
                     Prod.append(prod_1)
                 if Prod!=[]:
                     Dataframe = pd.concat( [Dataframe, Prod] , ignore_index = True )
+        print(Dict)
+        print(Similarity_Dict)
         return jsonify(Dataframe.to_json(orient = 'records'))
     except Exception as e:
         dict = {

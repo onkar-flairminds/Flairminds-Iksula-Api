@@ -1,4 +1,3 @@
-
 from typing import Dict
 from urllib.parse import ParseResultBytes
 import numpy as np
@@ -14,7 +13,7 @@ try:
     import phonenumbers
 except:
     os.system('pip3 install python-Levenshtein')
-    os.system('pip3 install phonenumbers')
+    os.system('pip3 install Phonenumbers')
     import Levenshtein
     import phonenumbers
 import mysql.connector as connection
@@ -40,17 +39,19 @@ except Exception as e:
 
 app = Flask(__name__)
 
-
 def exactSimilarMatch(string1, string2):
     string1 = string1.lower().strip()
     string2 = string2.lower().strip()
     if string1 == string2:
         return 1.0
     return 0.0
-def isValidPhoneNumber(phoneString):
+def isValidPhoneNumber(phoneString, stateCode):
     try:
-        phoneString = "+40721234567"
-        number = phonenumbers.parse(phoneString)
+        if stateCode=='' or stateCode==None:
+            number = phonenumbers.parse(phoneString)
+            return phonenumbers.is_valid_number(number)
+        number = phonenumbers.parse(phoneString,stateCode)
+        return phonenumbers.is_valid_number(number)
     except:
         return False
 def stringToWords(string):
@@ -96,6 +97,8 @@ def cleanWarranty(string):
         return 'none'
     if 'no' in cleaned:
         return 'no'
+def cleanZip(string):
+    return string.split('.')[0]
 
 #JacardPreProcessing
 def cleanShadeShape(string):
@@ -119,6 +122,15 @@ def groupmatching(att, matching_header, label, match_type, process, prod_1, prod
     for header in matching_header:
         prod_val2 = str(prod_2[header]).strip()
         if header in phone_fields:
+            stateCode1 = str(prod_1['state']).strip()
+            stateCode2 = str(prod_2['state']).strip()
+            if process=='phone':
+                check1 = isValidPhoneNumber(prod_val1, stateCode1)
+                check2 = isValidPhoneNumber(prod_val2, stateCode2)
+                if check1==False or check2==False:
+                    att_group_dict['group_score'] = 0
+                    group_array.append(att_group_dict)
+                    return 0
             prod_val1 = cleanPhoneNumber(prod_val1)
             prod_val2 = cleanPhoneNumber(prod_val2)
         if process=='email':
@@ -145,7 +157,7 @@ def groupmatching(att, matching_header, label, match_type, process, prod_1, prod
     return group_score
 
 
-def applyDictionaryLogic(pid, pid_2_list, prod_pid, prod_df, identifier, exactAtt, fuzzyAtt, Attributes, similar_exact, phone_fields,group1,group2,group3, condition):
+def applyDictionaryLogic(pid, pid_2_list, prod_pid, prod_df, identifier, exactAtt, fuzzyAtt, Attributes, similar_exact, phone_fields,group,group_types, condition):
     pid_2_list = np.array(pid_2_list)
     # if (pid in Dict.keys()):
     #     return None
@@ -156,9 +168,7 @@ def applyDictionaryLogic(pid, pid_2_list, prod_pid, prod_df, identifier, exactAt
     Dict[pid] = []
     matching_Score_Dict = {}
     matching_Attributes_Dict = {}
-    group1_att_dict = {}
-    group2_att_dict = {}
-    group3_att_dict = {}
+    group_att_dict = {}
     for pid_2 in pid_2_list:
         # if (pid_2 in Dict.keys()):
         #     return None
@@ -172,19 +182,20 @@ def applyDictionaryLogic(pid, pid_2_list, prod_pid, prod_df, identifier, exactAt
         exactAttMatched = []
         fuzzyAttMatched = []
         matching_attributes = []
-        group1_matching = []
-        group1_scores = []
-        group2_matching = []
-        group2_scores = []
-        group3_matching = []
-        group3_scores = []
-        
+        group_matching = {}
+        group_score = {}
+        for type in group_types:
+            group_matching[type] = []
+            group_score[type] = []
+
         for att in Attributes:
-           
+
             att_dict = {}
             if str(prod_1[att])=='nan' or prod_2[att]=='nan':
                 continue
             if str(prod_1[att])=='' or prod_2[att]=='':
+                continue
+            if str(prod_1[att])==None or prod_2[att]==None:
                 continue
             if att in exactAtt:
                 prod_val1 = str(prod_1[att]).strip()
@@ -211,46 +222,17 @@ def applyDictionaryLogic(pid, pid_2_list, prod_pid, prod_df, identifier, exactAt
                     att_dict['found_value'] = str(prod_2[att])
                     att_dict['score'] = 0.0
                     matching_attributes.append(att_dict)
-            if att in group1['data']:
-                score = groupmatching(att, group1['data'], group1["label"], group1["match-type"], group1["process"], prod_1, prod_2,phone_fields, condition, group1_matching)
-                if group1["match-type"]=='exact':
-                    if score == 1.0:
-                        exactAttScore = 1.0
-                        group1_scores.append(score)
-                        break
-                group1_scores.append(score)
-            if att in group2['data']:
-                score = groupmatching(att, group2['data'], group2["label"], group2["match-type"], group2["process"], prod_1, prod_2,phone_fields, condition, group2_matching)
-                if group2["match-type"]=='exact':
-                    if score == 1.0:
-                        exactAttScore = 1.0
-                        group2_scores.append(score)
-                        break
-                group2_scores.append(score)
-            if att in group3['data']:
-                score = groupmatching(att, group3['data'], group3["label"], group3["match-type"], group3["process"], prod_1, prod_2,phone_fields, condition, group3_matching)
-                if group3["match-type"]=='exact':
-                    if score == 1.0:
-                        exactAttScore = 1.0
-                        group3_scores.append(score)
-                        break
-                group3_scores.append(score)
+            for type in group_types:
+                if att in group[type]['data']:
+                    score = groupmatching(att, group[type]['data'], group[type]["label"], group[type]["match-type"], group[type]["process"], prod_1, prod_2,phone_fields, condition, group_matching[type])
+                    if group[type]["match-type"]=='exact':
+                        if score == 1.0:
+                            exactAttScore = 1.0
+                            group_score[type].append(score)
+                    else:
+                        group_score[type].append(score)
             
             if att in fuzzyAtt:
-                # score = ( fuzz.token_sort_ratio( str(prod_1[att]).lower(), str(prod_2[att]).lower()  ) )*0.01
-                
-                # att_dict['attributes_name'] = str(att)
-                # att_dict['current_value'] = str(prod_1[att])
-                # att_dict['found_value'] = str(prod_2[att])
-                # if score<=0.5:
-                #     att_dict['score'] = 0.0
-                # else:
-                #     att_dict['score'] = round(score,4)
-
-                # matching_attributes.append(att_dict)
-                # if score>0.75:
-                #     fuzzyAttMatched.append(str(att))
-
                 if att in similar_exact:
                     prod_val1 = str(prod_1[att]).strip()
                     prod_val2 = str(prod_2[att]).strip()
@@ -261,8 +243,10 @@ def applyDictionaryLogic(pid, pid_2_list, prod_pid, prod_df, identifier, exactAt
                     elif att =='manufacturer_warranty':
                        prod_val1 = cleanWarranty(prod_val1)
                        prod_val2 = cleanWarranty(prod_val2)
-
-                    score = exactSimilarMatch(str(prod_1[att]), str(prod_2[att]))
+                    elif att=='zip':
+                        prod_val1 = cleanZip(prod_val1)
+                        prod_val2 = cleanZip(prod_val2)
+                    score = exactSimilarMatch(str(prod_val1), str(prod_val2))
                     att_dict['attributes_name'] = str(att)
                     att_dict['current_value'] = str(prod_1[att])
                     att_dict['found_value'] = str(prod_2[att])
@@ -291,26 +275,11 @@ def applyDictionaryLogic(pid, pid_2_list, prod_pid, prod_df, identifier, exactAt
         if exactScore==1.0:
             Matching_Score = 1.0
         else:
-            if len(group1_scores)!=0:
-                group1_score = sum(group1_scores)/len(group1_scores)
-            else:
-                group1_score = 0
-            if len(group2_scores)!=0:
-                group2_score = sum(group2_scores)/len(group2_scores)
-            else:
-                group2_score = 0
-            if len(group3_scores)!=0:
-                group3_score = sum(group3_scores)/len(group3_scores)
-            else:
-                group3_score = 0
-            overall_score = (fuzzyScore + group1_score + group2_score + group3_score)/4
-            Matching_Score = round(overall_score , 4)
+            Matching_Score = round(fuzzyScore , 4)
         # if Matching_Score > 0.70:
         matching_Score_Dict['{}'.format(pid_2)] = Matching_Score
         matching_Attributes_Dict['{}'.format(pid_2)] = matching_attributes
-        group1_att_dict['{}'.format(pid_2)] = group1_matching
-        group2_att_dict['{}'.format(pid_2)] = group2_matching
-        group3_att_dict['{}'.format(pid_2)] = group3_matching
+        group_att_dict['{}'.format(pid_2)] = group_matching
 
     pid_2_keys = sorted(matching_Score_Dict, key=matching_Score_Dict.get, reverse=True)[:3]
 
@@ -321,7 +290,7 @@ def applyDictionaryLogic(pid, pid_2_list, prod_pid, prod_df, identifier, exactAt
             Similarity_Dict['{}:{}'.format(pid, pid_2)] = {}
             Similarity_Dict['{}:{}'.format(pid, pid_2)]['matching_attributes'] = matching_Attributes_Dict['{}'.format(pid_2)]
             Similarity_Dict['{}:{}'.format(pid, pid_2)]['matching_score'] = matching_score
-            Similarity_Dict['{}:{}'.format(pid, pid_2)]['group_matching'] = [ group1_att_dict['{}'.format(pid_2)], group2_att_dict['{}'.format(pid_2)], group3_att_dict['{}'.format(pid_2)]]
+            Similarity_Dict['{}:{}'.format(pid, pid_2)]['group_matching'] = group_att_dict['{}'.format(pid_2)]
 
 @app.route('/get_results', methods = ['POST'])
 def Run():
@@ -333,13 +302,11 @@ def Run():
         test = pd.io.json.json_normalize(request_data['data'])
         filter = request_data['filter']
         group = request_data['action-group']
-        group1 = request_data['action-group']['type1']
-        group2 = request_data['action-group']['type2']
-        group3 = request_data['action-group']['type3']
+        group_att = []
+        for type in group.keys():
+            group_att = group_att + group[type]['data']
+        group_att = list(set.intersection(set(group_att), set(list(test.columns))))
         group_types = list(request_data['action-group'].keys())
-        # group1 = type1['data']
-        # group2 = type2['data']
-        # group3 = type3['data']
         global Dict
         Dict = {}
         global Similarity_Dict
@@ -347,17 +314,18 @@ def Run():
 
         if test['data_type'].iloc[0]=='customer':
             similar_exact = ['zip','city','country','state']
+            # similar_exact = []
             phone_fields = ['phone1', 'phone2']
             exactAtt = request_data['exact']
             fuzzyAtt = request_data['similar']
-            Attributes = list(set(exactAtt + fuzzyAtt))#group1['data']+ group2['data']+group3['data']))
+            Attributes = list(set(exactAtt + fuzzyAtt+ group_att))
             prod_pid = test
             identifier = 'id'
             if filter=='':
-                prod_pid.apply(lambda x : applyDictionaryLogic(x[identifier], customer[identifier], prod_pid, customer, identifier, exactAtt, fuzzyAtt, Attributes, similar_exact,phone_fields,group1,group2,group3,0.75)
+                prod_pid.apply(lambda x : applyDictionaryLogic(x[identifier], customer[identifier], prod_pid, customer, identifier, exactAtt, fuzzyAtt, Attributes, similar_exact,phone_fields,group,group_types,0.3)
                         , axis = 1)
             else:
-                prod_pid.apply(lambda x : applyDictionaryLogic(x[identifier], customer[customer[filter]==x[filter]][identifier], prod_pid, customer, identifier, exactAtt, fuzzyAtt, Attributes, similar_exact,phone_fields,group1,group2,group3,0.75)
+                prod_pid.apply(lambda x : applyDictionaryLogic(x[identifier], customer[customer[filter]==x[filter]][identifier], prod_pid, customer, identifier, exactAtt, fuzzyAtt, Attributes, similar_exact,phone_fields,group,group_types,0.3)
                             , axis = 1)
         elif test['data_type'].iloc[0]=='product':
             exactAtt = request_data['exact']
@@ -366,15 +334,16 @@ def Run():
             'downrod_length_in', 'material','product_height_in','product_depth_in','housing_color_family', 'color_finish', 'product_weight_lb',
             'product_width_in','series_collection','product_diameter_in','california_title_20_compliant','shade_fitter_type','shade_color_family',
             'lighting_product_type','certifications_and_listings', 'fixture_color_finish_family', 'lamp_shade_material']
+            # similar_exact = []
             phone_fields = []
             Attributes = exactAtt + fuzzyAtt
             prod_pid = test
             identifier = 'id'
             if filter=='':
-                prod_pid.apply(lambda x : applyDictionaryLogic(x[identifier], product[identifier], prod_pid, product, identifier, exactAtt, fuzzyAtt, Attributes,similar_exact,phone_fields,group1,group2,group3,0.75)
+                prod_pid.apply(lambda x : applyDictionaryLogic(x[identifier], product[identifier], prod_pid, product, identifier, exactAtt, fuzzyAtt, Attributes,similar_exact,phone_fields,group,group_types,0.3)
                         , axis = 1)
             else:
-                prod_pid.apply(lambda x : applyDictionaryLogic(x[identifier], product[product[filter]==x[filter]][identifier], prod_pid, product, identifier, exactAtt, fuzzyAtt, Attributes,similar_exact,phone_fields,group1,group2,group3,0.75)
+                prod_pid.apply(lambda x : applyDictionaryLogic(x[identifier], product[product[filter]==x[filter]][identifier], prod_pid, product, identifier, exactAtt, fuzzyAtt, Attributes,similar_exact,phone_fields,group,group_types,0.3)
                         , axis = 1)
 
         Dataframe = pd.DataFrame()
@@ -384,11 +353,7 @@ def Run():
                 prod_1 = prod_pid[prod_pid[identifier]==PID]
                 prod_1['matching_score'] = Similarity_Dict['{}:{}'.format(PID, pid_2)]['matching_score']
                 prod_1['matching_{}'.format(identifier)] = pid_2
-                group_matching = {}
-                print(Similarity_Dict['{}:{}'.format(PID, pid_2)]['group_matching'])
-                for i in range(len(group_types)):
-                    group_matching[group_types[i]] = Similarity_Dict['{}:{}'.format(PID, pid_2)]['group_matching'][i]
-                prod_1['group_matching'] = pd.io.json.dumps(group_matching)
+                prod_1['group_matching'] = pd.io.json.dumps(Similarity_Dict['{}:{}'.format(PID, pid_2)]['group_matching'])
                 prod_1['matching_attributes'] = pd.io.json.dumps(Similarity_Dict['{}:{}'.format(PID, pid_2)]['matching_attributes'])
                 Prod.append(prod_1)
             if Prod!=[]:

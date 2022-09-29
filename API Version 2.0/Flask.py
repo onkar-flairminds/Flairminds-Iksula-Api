@@ -138,8 +138,8 @@ def SimilarityScore(prod_1,prod_2,att):
     if att == 'shade_shape':
         stringArray1 = cleanShadeShape(str(prod_1[att]))
         stringArray2 = cleanShadeShape(str(prod_2[att]))
-    str1 = jellyfish.nysiis(str(prod_1[att]))
-    str2 = jellyfish.nysiis(str(prod_2[att]))
+    # str1 = jellyfish.nysiis(str(prod_1[att]))
+    # str2 = jellyfish.nysiis(str(prod_2[att]))
     # soundex_score = ( fuzz.token_sort_ratio( str1, str2) )*0.01
     jacc_score = JaccardSimilarity(stringArray1, stringArray2)
     fuzzy_score = ( fuzz.token_sort_ratio( str(prod_1[att]).lower(), str(prod_2[att]).lower()  ) )*0.01

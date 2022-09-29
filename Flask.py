@@ -1,3 +1,4 @@
+from operator import indexOf
 from typing import Dict
 from urllib.parse import ParseResultBytes
 import numpy as np
@@ -12,13 +13,16 @@ try:
     import Levenshtein
     import phonenumbers
     from sqlalchemy import engine,create_engine
+    from difflib import SequenceMatcher
 except:
     os.system('pip3 install python-Levenshtein')
     os.system('pip3 install Phonenumbers')
     os.system('pip3 install sqlalchemy')
+    os.system('pip3 install difflib')
     import Levenshtein
     import phonenumbers
     from sqlalchemy import engine,create_engine
+    from difflib import SequenceMatcher
 
 from flask import Flask, request, jsonify
 
@@ -114,15 +118,11 @@ def exactSimilarMatch(string1, string2):
     if string1 == string2:
         return 1.0
     return 0.0
-def isValidPhoneNumber(phoneString, stateCode):
-    try:
-        if stateCode=='' or stateCode==None:
-            number = phonenumbers.parse(phoneString)
-            return phonenumbers.is_valid_number(number)
-        number = phonenumbers.parse(phoneString,stateCode)
-        return phonenumbers.is_valid_number(number)
-    except:
-        return False
+def isValidPhoneNumber(phoneString):
+    phoneString = phoneString[-10:]
+    Pattern = re.compile("[6-9][0-9]{9}")
+    return Pattern.match(phoneString)
+
 def stringToWords(string):
     string = string.lower()
     string = re.sub(r'[^\w\s]', ' ', string)
@@ -180,6 +180,29 @@ def PreProcesscustomer(customer):
     pass
 def PreprocessProduct(product):
     pass
+def longestCommonSubstringScore(string1,string2): 
+    seqMatch = SequenceMatcher(None,string1,string2) 
+    match = seqMatch.find_longest_match(0, len(string1), 0, len(string2))
+    if (match.size!=0):
+        if len(string1)>=len(string2):
+            score = match.size/len(string1) 
+        elif len(string2)>=len(string1):
+            score = match.size/len(string2)
+        return score
+    else:
+        return 0
+
+def SimilarityScore(string1,string2):
+    stringArray1 = stringToWords(str(string1))
+    stringArray2 = stringToWords(str(string2))
+    jacc_score = JaccardSimilarity(stringArray1, stringArray2)
+    fuzzy_score = ( fuzz.token_sort_ratio( str(string1).lower().strip(), str(string2).lower().strip()) )*0.01
+    LCS_score = ( longestCommonSubstringScore( str(string1).lower(), str(string2).lower()) )
+    if jacc_score==0:
+        score = (10*LCS_score + 18*fuzzy_score)/28
+    else:
+        score = (10*LCS_score + 18*jacc_score + 6*fuzzy_score)/34
+    return round(score,4)
 
 def groupmatching(att, matching_header, label, match_type, process, prod_1, prod_2, phone_fields, condition, group_array):
     prod_val1 = str(prod_1[att]).strip()
@@ -189,26 +212,46 @@ def groupmatching(att, matching_header, label, match_type, process, prod_1, prod
     att_group_dict['matching_fields'] = {}
     score_list = []
     for header in matching_header:
-        prod_val2 = str(prod_2[header]).strip()
+        prod_val2 = [str(value).lower().strip() for value in prod_2[att]]
+        if str(prod_1[att])=='nan' or str(prod_1[att])=='' or prod_1[att]==None:
+            continue
+        index_list = []
+        for i in range(len(prod_val2)):
+            if str(prod_val2)=='' or str(prod_val2)=='nan' or prod_val2==None:
+                continue
+            index_list.append(i)
         if header in phone_fields:
-            stateCode1 = str(prod_1['state']).strip()
-            stateCode2 = str(prod_2['state']).strip()
             if process=='phone':
-                check1 = isValidPhoneNumber(prod_val1, stateCode1)
-                check2 = isValidPhoneNumber(prod_val2, stateCode2)
+                check1 = isValidPhoneNumber(prod_val1)
+                phone_index = []
+                check2 = False
+                for i in range(len(prod_val2)):
+                    if isValidPhoneNumber(prod_val2[i]):
+                        phone_index.append(i)
+                        check2 = True
                 if check1==False or check2==False:
                     att_group_dict['group_score'] = 0
                     group_array.append(att_group_dict)
                     return 0
             prod_val1 = cleanPhoneNumber(prod_val1)
-            prod_val2 = cleanPhoneNumber(prod_val2)
+            prod_val2 = [ cleanPhoneNumber(value) for value in prod_val2]
         if process=='email':
             prod_val1 = cleanEmailTail(prod_val1)
-            prod_val2 = cleanEmailTail(prod_val2)
+            prod_val2 = [ cleanEmailTail(value) for value in prod_val2]
         if match_type=="exact":
-            score = exactSimilarMatch(prod_val1, prod_val2)
-            att_group_dict['matching_fields'][header] = score
-            score_list.append(score)
+            match = np.intersect1d(np.array(prod_val1), np.array(prod_val2))
+            # score = exactSimilarMatch(prod_val1, prod_val2)
+            score = 0
+            if len(match)!=0:
+                for match_value in match:
+                    index = prod_val2.index(match_value)
+                    if index in index_list:
+                        if header in phone_fields and match_value in phone_index:
+                            score = 1
+                        else:
+                            score = 1
+                att_group_dict['matching_fields'][header] = score
+                score_list.append(score)
         elif match_type=="similar":
             stringArray1 = stringToWords(str(prod_1[att]))
             stringArray2 = stringToWords(str(prod_2[att]))
@@ -216,6 +259,16 @@ def groupmatching(att, matching_header, label, match_type, process, prod_1, prod
             att_group_dict['matching_fields'][header] = score
             if score>condition:
                 score_list.append(score)
+            fuzz_score = 0
+            for index in range(len(prod_val2)):
+                score = SimilarityScore(prod_val1,prod_val2[index])
+                # score = JaccardSimilarity(str(prod_1[att]), str(prod_2[att]))
+                if index in index_list and score > condition:
+                    if score>=fuzz_score:
+                        fuzz_score = score
+            att_group_dict['matching_fields'][header] = score
+            if fuzz_score > condition:
+                score_list.append(fuzz_score)
 
     if len(score_list)!=0:
         group_score = max(score_list)
@@ -228,29 +281,17 @@ def groupmatching(att, matching_header, label, match_type, process, prod_1, prod
 
 def applyDictionaryLogic(pid, pid_2_list, prod_pid, prod_df, identifier, exactAtt, fuzzyAtt, Attributes, similar_exact, phone_fields,group,group_types, condition):
     pid_2_list = np.array(pid_2_list)
-    # if (pid in Dict.keys()):
-    #     return None
-    # else:
-    # for key in Dict.keys():
-    #     if pid in Dict[key]:
-    #         return None
     Dict[pid] = []
     matching_Score_Dict = {}
     matching_Attributes_Dict = {}
     group_att_dict = {}
     for pid_2 in pid_2_list:
-        # if (pid_2 in Dict.keys()):
-        #     return None
-        # else:
-        # for key in Dict.keys():
-        #     if pid_2 in Dict[key]:
-        #         return None
         prod_1 = prod_pid[prod_pid[identifier]==pid].iloc[0]
         prod_2 = prod_df[prod_df[identifier]==pid_2].iloc[0]
         exactAttScore = 0
         exactAttMatched = []
         fuzzyAttMatched = []
-        matching_attributes = []
+        matching_attributes = {}
         group_matching = {}
         group_score = {}
         for type in group_types:
@@ -259,37 +300,42 @@ def applyDictionaryLogic(pid, pid_2_list, prod_pid, prod_df, identifier, exactAt
 
         for att in Attributes:
             att_dict = {}
-            if str(prod_1[att])=='nan' or prod_2[att]=='nan':
+            prod_val1 = str(prod_1[att]).lower().strip()
+            if prod_2[att]==None or str(prod_2[att])=='nan' or prod_2[att]=='':
                 continue
-            if str(prod_1[att])=='' or prod_2[att]=='':
+            prod_val2 = [str(value).lower().strip() for value in prod_2[att]]
+            if str(prod_1[att])=='nan' or str(prod_1[att])=='' or prod_1[att]==None:
                 continue
-            if str(prod_1[att])==None or prod_2[att]==None:
-                continue
+            index_list = []
+            for i in range(len(prod_val2)):
+                if str(prod_val2)=='' or str(prod_val2)=='nan' or prod_val2==None:
+                    continue
+                index_list.append(i)
             if att in exactAtt:
-                prod_val1 = str(prod_1[att]).strip()
-                prod_val2 = str(prod_2[att]).strip()
                 if att in phone_fields:
-                    prod_val1 = cleanPhoneNumber(prod_val1)
-                    prod_val2 = cleanPhoneNumber(prod_val2)
+                    prod_val1 = [cleanPhoneNumber(value) for value in prod_val1]
+                    prod_val2 = [cleanPhoneNumber(value) for value in prod_val2]
                 elif att=='model_number':
-                    prod_val1 = cleanModelNumber(prod_val1)
-                    prod_val2 = cleanModelNumber(prod_val2)
-                print(prod_val1, prod_val2)
-                if prod_val1==prod_val2:
-                    exactAttMatched.append(str(att))
-                    att_dict['attributes_name'] = str(att)
-                    att_dict['current_value'] = str(prod_1[att])
-                    att_dict['found_value'] = str(prod_2[att])
-                    att_dict['score'] = 1.0
-                    exactAttScore = 1.0
-                    matching_attributes.append(att_dict)
-                    break
-                else:
-                    att_dict['attributes_name'] = str(att)
-                    att_dict['current_value'] = str(prod_1[att])
-                    att_dict['found_value'] = str(prod_2[att])
-                    att_dict['score'] = 0.0
-                    matching_attributes.append(att_dict)
+                    prod_val1 = [cleanModelNumber(value) for value in prod_val1]
+                    prod_val2 = [cleanModelNumber(value) for value in prod_val2]
+                match = np.intersect1d(np.array(prod_val1), np.array(prod_val2))
+                att_dict = {}
+                if len(match)!=0:
+                    matching_attributes[str(att)] = []
+                    for match_value in match:
+                        index = prod_val2.index(match_value)
+                        if index in index_list:
+                            att_identifier = Identifier_Dict[att]
+                            att_dict['current_value'] = match_value
+                            att_dict['found_value'] = match_value
+                            att_dict[att_identifier] = prod_2[att_identifier][index]
+                            att_dict['score'] = 1.0
+                            
+                            matching_attributes[str(att)].append(att_dict)
+                            exactAttScore = 1.0
+                    if exactAttScore == 1.0:
+                        exactAttMatched.append(str(att))
+                        break
             for type in group_types:
                 if att in group[type]['data']:
                     score = groupmatching(att, group[type]['data'], group[type]["label"], group[type]["match-type"], group[type]["process"], prod_1, prod_2,phone_fields, condition, group_matching[type])
@@ -299,43 +345,57 @@ def applyDictionaryLogic(pid, pid_2_list, prod_pid, prod_df, identifier, exactAt
                             group_score[type].append(score)
                     else:
                         group_score[type].append(score)
-            
             if att in fuzzyAtt:
                 if att in similar_exact:
-                    prod_val1 = str(prod_1[att]).strip()
-                    prod_val2 = str(prod_2[att]).strip()
-
                     if att =='mfg_brand_name':
-                       prod_val1 = cleanMfgBrand(prod_val1)
-                       prod_val2 = cleanMfgBrand(prod_val2)
+                        prod_val1 = [cleanMfgBrand(value) for value in prod_val1]
+                        prod_val2 = [cleanMfgBrand(value) for value in prod_val2]
                     elif att =='manufacturer_warranty':
-                       prod_val1 = cleanWarranty(prod_val1)
-                       prod_val2 = cleanWarranty(prod_val2)
+                        prod_val1 = [cleanWarranty(value) for value in prod_val1]
+                        prod_val2 = [cleanWarranty(value) for value in prod_val2]
                     elif att=='zip':
-                        prod_val1 = cleanZip(prod_val1)
-                        prod_val2 = cleanZip(prod_val2)
-                    print(prod_val1, prod_val2)
-                    score = exactSimilarMatch(str(prod_val1), str(prod_val2))
-                    att_dict['attributes_name'] = str(att)
-                    att_dict['current_value'] = str(prod_1[att])
-                    att_dict['found_value'] = str(prod_2[att])
-                    att_dict['score'] = score
-                    matching_attributes.append(att_dict)
-                    if score == 1.0:
-                        fuzzyAttMatched.append(str(att))
+                        prod_val1 = [cleanZip(value) for value in prod_val1]
+                        prod_val2 = [cleanZip(value) for value in prod_val2]
+            
+                    match = np.intersect1d(np.array(prod_val1), np.array(prod_val2))
+                    att_dict = {}
+                    if len(match)!=0:
+                        fuzz_score = 0
+                        matching_attributes[str(att)] = []
+                        for match_value in match:
+                            index = prod_val2.index(match_value)
+                            if index in index_list:
+                                att_identifier = Identifier_Dict[att]
+                                att_dict['current_value'] = match_value
+                                att_dict['found_value'] = match_value
+                                att_dict[att_identifier] = prod_2[att_identifier][index]
+                                att_dict['score'] = 1.0
+                                matching_attributes[str(att)].append(att_dict)
+                                if score>=fuzz_score:
+                                   fuzz_score = score
+                        if fuzz_score==1.0:
+                            fuzzyAttMatched.append(str(att))
                 else:
                     # stringArray1 = stringToWords(str(prod_1[att]))
                     # stringArray2 = stringToWords(str(prod_2[att]))
-                    print(prod_1[att], prod_2[att])
                     if att == 'shade_shape':
-                        stringArray1 = cleanShadeShape(str(prod_1[att]))
-                        stringArray2 = cleanShadeShape(str(prod_2[att]))  
-                    score = JaccardSimilarity(str(prod_1[att]), str(prod_2[att]))
-                    att_dict['attributes_name'] = str(att)
-                    att_dict['current_value'] = str(prod_1[att])
-                    att_dict['found_value'] = str(prod_2[att])
-                    att_dict['score'] = score
-                    matching_attributes.append(att_dict)
+                        stringArray1 = cleanShadeShape(prod_val1)
+                        stringArray2 = [cleanShadeShape(str(value)) for value in prod_val2]
+                    fuzz_score = 0
+                    att_dict = {}
+                    matching_attributes[str(att)] = []
+                    for index in range(len(prod_val2)):
+                        score = SimilarityScore(prod_val1,prod_val2[index])
+                        # score = JaccardSimilarity(str(prod_1[att]), str(prod_2[att]))
+                        if index in index_list and score > condition:
+                            att_identifier = Identifier_Dict[att]
+                            att_dict['current_value'] = prod_val1
+                            att_dict['found_value'] = prod_val2[i]
+                            att_dict[att_identifier] = prod_2[att_identifier][index]
+                            att_dict['score'] = score
+                            matching_attributes[str(att)].append(att_dict)
+                            if score>=fuzz_score:
+                                fuzz_score = score
                     if score > condition:
                         fuzzyAttMatched.append(str(att))
 
@@ -386,14 +446,18 @@ def Run():
         Dict = {}
         global Similarity_Dict
         Similarity_Dict = {}
+        global Identifier_Dict
+        Identifier_Dict = {'Email' : 'EmailID', 'PhoneNumber':'PhoneID', 'Street':'AddressID', 'Street2':'AddressID', 'City':'AddressID',
+                        'StateCode':'AddressID', 'PostalCode':'AddressID', 'County':'AddressID','GeoCode':'AddressID', 'CountryCode':'AddressID'}
 
         if test['data_type'].iloc[0]=='customer':
             similar_exact = ['zip','city','country','state']
             # similar_exact = []
-            phone_fields = ['phone1', 'phone2']
+            phone_fields = ['phone1', 'phone2', 'PhoneNumber']
             exactAtt = request_data['exact']
             fuzzyAtt = request_data['similar']
             Attributes = list(set(exactAtt + fuzzyAtt+ group_att))
+            
             prod_pid = test
             master = Cust
             identifier = 'id'
@@ -426,12 +490,11 @@ def Run():
                         , axis = 1)
 
         Dataframe = pd.DataFrame()
+        print(Dict)
         for PID in Dict.keys():
             Prod = []
-            print(Dict)
             for pid_2 in Dict[PID]:
-                prod_1 = master[master[identifier]==pid_2]
-                print(prod_1)
+                prod_1 = master[master[identifier]==int(pid_2)]
                 prod_1['matching_score'] = Similarity_Dict['{}:{}'.format(PID, pid_2)]['matching_score']
                 prod_1['matching_{}'.format(identifier)] = PID
                 prod_1['group_matching'] = pd.io.json.dumps(Similarity_Dict['{}:{}'.format(PID, pid_2)]['group_matching'])

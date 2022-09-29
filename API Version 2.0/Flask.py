@@ -11,100 +11,32 @@ from string import punctuation
 try:
     import Levenshtein
     import phonenumbers
-    from sqlalchemy import engine,create_engine
 except:
     os.system('pip3 install python-Levenshtein')
     os.system('pip3 install Phonenumbers')
-    os.system('pip3 install sqlalchemy')
     import Levenshtein
     import phonenumbers
-    from sqlalchemy import engine,create_engine
+import mysql.connector as connection
 
 from flask import Flask, request, jsonify
 
-connection_url = engine.URL.create(
-    drivername="mysql+pymysql",
-    username="root",
-    password="Pass@123",
-    host="localhost",
-    port = 3306,
-    database="iksula",
-)
-cnx = create_engine(connection_url)
 try:
-    query = "SELECT * FROM search_data_customer;"
-    customer = pd.read_sql(query,cnx)
-    Cust = customer.copy(deep=True)
-    # cnx.close() #close the connection
+    mydb = connection.connect(host="localhost", database = 'iksula',user="root", passwd="Pass@123",use_pure=True)
+    query = "Select * from customer_master_records;"
+    customer = pd.read_sql(query,mydb)
+    mydb.close() #close the connection
 except Exception as e:
-    # cnx.close()
+    mydb.close()
     print('Error : '+str(e))
 try:
-    query = "SELECT * FROM search_data_address;"
-    address = pd.read_sql(query,cnx)
-    # cnx.close() #close the connection
-except Exception as e:
-    # cnx.close()
-    print('Error : '+str(e))
-try:
-    query = "SELECT * FROM search_data_email;"
-    email = pd.read_sql(query,cnx)
-    # cnx.close() #close the connection
-except Exception as e:
-    # cnx.close()
-    print('Error : '+str(e))
-try:
-    query = "SELECT * FROM search_data_phone;"
-    phone = pd.read_sql(query,cnx)
-    # cnx.close() #close the connection
-except Exception as e:
-    # cnx.close()
-    print('Error : '+str(e))
-try:
+    mydb = connection.connect(host="localhost", database = 'iksula',user="root", passwd="Pass@123",use_pure=True)
     query = "Select * from master_products_datas;"
-    product = pd.read_sql(query,cnx)
-    # cnx.close() #close the connection
+    product = pd.read_sql(query,mydb)
+    mydb.close() #close the connection
 except Exception as e:
-    # cnx.close()
+    mydb.close()
     print('Error : '+str(e))
 
-def GroupAndMerge(Cust,df,agg_dict):
-    combined_df = df.groupby('CustTreeNodeID').agg(agg_dict).reset_index()
-    return Cust.merge(combined_df,how = 'left', on = 'CustTreeNodeID')
-
-def MergeAllData(Cust, address, email, phone):
-    agg_dict = {'AddressID':list,'Street':list,'Street2':list,'City':list,'StateCode':list,'PostalCode':list,
-                'County':list,'GeoCode':list,'CountryCode':list}
-    Cust = GroupAndMerge(Cust,address,agg_dict)
-    agg_dict = {'PhoneID':list,'PhoneNumber':list}
-    Cust = GroupAndMerge(Cust,phone,agg_dict)
-    agg_dict = {'EmailID':list,'Email':list}
-    Cust = GroupAndMerge(Cust,email,agg_dict)
-    return Cust
-
-def checkForFilterandMerge(customer, email, address, phone, filter, filter_value):
-    if filter in customer.columns:
-        customer_filtered = customer[customer[filter]==filter_value]
-    else:
-        customer_filtered = customer
-    if filter in email.columns:
-        email_filtered = email[email[filter]==filter_value]
-    else:
-        email_filtered = email
-    if filter in address.columns:
-        address_filtered = address[address[filter]==filter_value]
-    else:
-        address_filtered = address
-    if filter in phone.columns:
-        phone_filtered = phone[phone[filter]==filter_value]
-    else:
-        phone_filtered = phone
-    return MergeAllData(customer_filtered, address_filtered, email_filtered, phone_filtered)
-
-try:
-    Cust = MergeAllData(Cust, address, email, phone)
-except Exception as e:
-    print('Error on Merging : '+str(e))
 app = Flask(__name__)
 
 def exactSimilarMatch(string1, string2):
@@ -179,6 +111,17 @@ def PreProcesscustomer(customer):
     pass
 def PreprocessProduct(product):
     pass
+
+def SimilarityScore(prod_1,prod_2,att):
+    stringArray1 = stringToWords(str(prod_1[att]))
+    stringArray2 = stringToWords(str(prod_2[att]))
+    if att == 'shade_shape':
+        stringArray1 = cleanShadeShape(str(prod_1[att]))
+        stringArray2 = cleanShadeShape(str(prod_2[att]))
+    jacc_score = JaccardSimilarity(stringArray1, stringArray2)
+    fuzzy_score = ( fuzz.token_sort_ratio( str(prod_1[att]).lower(), str(prod_2[att]).lower()  ) )*0.01
+    score = (jacc_score + fuzzy_score)/2
+    return score
 
 def groupmatching(att, matching_header, label, match_type, process, prod_1, prod_2, phone_fields, condition, group_array):
     prod_val1 = str(prod_1[att]).strip()
@@ -257,6 +200,7 @@ def applyDictionaryLogic(pid, pid_2_list, prod_pid, prod_df, identifier, exactAt
             group_score[type] = []
 
         for att in Attributes:
+
             att_dict = {}
             if str(prod_1[att])=='nan' or prod_2[att]=='nan':
                 continue
@@ -324,10 +268,11 @@ def applyDictionaryLogic(pid, pid_2_list, prod_pid, prod_df, identifier, exactAt
                 else:
                     # stringArray1 = stringToWords(str(prod_1[att]))
                     # stringArray2 = stringToWords(str(prod_2[att]))
-                    if att == 'shade_shape':
-                        stringArray1 = cleanShadeShape(str(prod_1[att]))
-                        stringArray2 = cleanShadeShape(str(prod_2[att]))  
-                    score = JaccardSimilarity(str(prod_1[att]), str(prod_2[att]))
+                    # if att == 'shade_shape':
+                    #     stringArray1 = cleanShadeShape(str(prod_1[att]))
+                    #     stringArray2 = cleanShadeShape(str(prod_2[att]))
+                    # score = JaccardSimilarity(stringArray1, stringArray2)
+                    score = SimilarityScore(prod_1,prod_2,att)
                     att_dict['attributes_name'] = str(att)
                     att_dict['current_value'] = str(prod_1[att])
                     att_dict['found_value'] = str(prod_2[att])
@@ -368,11 +313,6 @@ def Run():
         request_data = request.json
         test = pd.io.json.json_normalize(request_data['data'])
         filter = request_data['filter']
-        
-        # if filter!='':
-        #     Customer_Merged = checkForFilterandMerge(customer, email, address, phone, filter)
-        # else:
-        #     Customer_Merged = Cust
         group = request_data['action-group']
         group_att = []
         for type in group.keys():
@@ -392,15 +332,12 @@ def Run():
             fuzzyAtt = request_data['similar']
             Attributes = list(set(exactAtt + fuzzyAtt+ group_att))
             prod_pid = test
-            master = Cust
             identifier = 'id'
             if filter=='':
-                prod_pid.apply(lambda x : applyDictionaryLogic(x[identifier], master[identifier], prod_pid, master, identifier, exactAtt, fuzzyAtt, Attributes, similar_exact,phone_fields,group,group_types,0.3)
+                prod_pid.apply(lambda x : applyDictionaryLogic(x[identifier], customer[identifier], prod_pid, customer, identifier, exactAtt, fuzzyAtt, Attributes, similar_exact,phone_fields,group,group_types,0.3)
                         , axis = 1)
             else:
-                prod_pid['df'] = prod_pid.apply(lambda x : checkForFilterandMerge(customer, email, address, phone, filter, x[filter])
-                            , axis = 1)
-                prod_pid.apply(lambda x : applyDictionaryLogic(x[identifier], x['df'][identifier], prod_pid, x['df'], identifier, exactAtt, fuzzyAtt, Attributes, similar_exact,phone_fields,group,group_types,0.3)
+                prod_pid.apply(lambda x : applyDictionaryLogic(x[identifier], customer[customer[filter]==x[filter]][identifier], prod_pid, customer, identifier, exactAtt, fuzzyAtt, Attributes, similar_exact,phone_fields,group,group_types,0.3)
                             , axis = 1)
         elif test['data_type'].iloc[0]=='product':
             exactAtt = request_data['exact']
@@ -413,24 +350,21 @@ def Run():
             phone_fields = []
             Attributes = exactAtt + fuzzyAtt
             prod_pid = test
-            master = product
             identifier = 'id'
             if filter=='':
-                prod_pid.apply(lambda x : applyDictionaryLogic(x[identifier], master[identifier], prod_pid, master, identifier, exactAtt, fuzzyAtt, Attributes,similar_exact,phone_fields,group,group_types,0.3)
+                prod_pid.apply(lambda x : applyDictionaryLogic(x[identifier], product[identifier], prod_pid, product, identifier, exactAtt, fuzzyAtt, Attributes,similar_exact,phone_fields,group,group_types,0.3)
                         , axis = 1)
             else:
-                prod_pid.apply(lambda x : applyDictionaryLogic(x[identifier], master[master[filter]==x[filter]][identifier], prod_pid, master, identifier, exactAtt, fuzzyAtt, Attributes,similar_exact,phone_fields,group,group_types,0.3)
+                prod_pid.apply(lambda x : applyDictionaryLogic(x[identifier], product[product[filter]==x[filter]][identifier], prod_pid, product, identifier, exactAtt, fuzzyAtt, Attributes,similar_exact,phone_fields,group,group_types,0.3)
                         , axis = 1)
 
         Dataframe = pd.DataFrame()
         for PID in Dict.keys():
             Prod = []
-            print(Dict)
             for pid_2 in Dict[PID]:
-                prod_1 = master[master[identifier]==pid_2]
-                print(prod_1)
+                prod_1 = prod_pid[prod_pid[identifier]==PID]
                 prod_1['matching_score'] = Similarity_Dict['{}:{}'.format(PID, pid_2)]['matching_score']
-                prod_1['matching_{}'.format(identifier)] = PID
+                prod_1['matching_{}'.format(identifier)] = pid_2
                 prod_1['group_matching'] = pd.io.json.dumps(Similarity_Dict['{}:{}'.format(PID, pid_2)]['group_matching'])
                 prod_1['matching_attributes'] = pd.io.json.dumps(Similarity_Dict['{}:{}'.format(PID, pid_2)]['matching_attributes'])
                 Prod.append(prod_1)
@@ -446,4 +380,3 @@ def Run():
 
 if __name__ == '__main__':
     app.run(host = '0.0.0.0',port='5000',debug=False)
-    cnx.dispose()

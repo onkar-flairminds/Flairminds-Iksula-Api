@@ -99,7 +99,8 @@ def checkForFilterandMerge(customer, email, address, phone, filter, filter_value
         phone_filtered = phone[phone[filter]==filter_value]
     else:
         phone_filtered = phone
-    return MergeAllData(customer_filtered, address_filtered, email_filtered, phone_filtered)
+    merged = MergeAllData(customer_filtered, address_filtered, email_filtered, phone_filtered)
+    return merged
 
 try:
     Cust = MergeAllData(Cust, address, email, phone)
@@ -273,7 +274,7 @@ def applyDictionaryLogic(pid, pid_2_list, prod_pid, prod_df, identifier, exactAt
                 elif att=='model_number':
                     prod_val1 = cleanModelNumber(prod_val1)
                     prod_val2 = cleanModelNumber(prod_val2)
-                
+                print(prod_val1, prod_val2)
                 if prod_val1==prod_val2:
                     exactAttMatched.append(str(att))
                     att_dict['attributes_name'] = str(att)
@@ -313,6 +314,7 @@ def applyDictionaryLogic(pid, pid_2_list, prod_pid, prod_df, identifier, exactAt
                     elif att=='zip':
                         prod_val1 = cleanZip(prod_val1)
                         prod_val2 = cleanZip(prod_val2)
+                    print(prod_val1, prod_val2)
                     score = exactSimilarMatch(str(prod_val1), str(prod_val2))
                     att_dict['attributes_name'] = str(att)
                     att_dict['current_value'] = str(prod_1[att])
@@ -324,6 +326,7 @@ def applyDictionaryLogic(pid, pid_2_list, prod_pid, prod_df, identifier, exactAt
                 else:
                     # stringArray1 = stringToWords(str(prod_1[att]))
                     # stringArray2 = stringToWords(str(prod_2[att]))
+                    print(prod_1[att], prod_2[att])
                     if att == 'shade_shape':
                         stringArray1 = cleanShadeShape(str(prod_1[att]))
                         stringArray2 = cleanShadeShape(str(prod_2[att]))  

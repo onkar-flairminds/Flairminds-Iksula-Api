@@ -8,14 +8,22 @@ import re
 import os
 from fuzzywuzzy import fuzz
 from string import punctuation
+
 try:
     import Levenshtein
     import phonenumbers
+    from difflib import SequenceMatcher
+    import jellyfish
 except:
     os.system('pip3 install python-Levenshtein')
     os.system('pip3 install Phonenumbers')
+    os.system('pip3 install difflib')
+    os.system('pip3 install jellyfish')
+    from difflib import SequenceMatcher
     import Levenshtein
     import phonenumbers
+    import jellyfish
+
 import mysql.connector as connection
 
 from flask import Flask, request, jsonify
@@ -112,16 +120,39 @@ def PreProcesscustomer(customer):
 def PreprocessProduct(product):
     pass
 
+def longestCommonSubstringScore(string1,string2): 
+    seqMatch = SequenceMatcher(None,string1,string2) 
+    match = seqMatch.find_longest_match(0, len(string1), 0, len(string2))
+    if (match.size!=0):
+        if len(string1)>=len(string2):
+            score = match.size/len(string1) 
+        elif len(string2)>=len(string1):
+            score = match.size/len(string2)
+        return score
+    else:
+        return 0
+
 def SimilarityScore(prod_1,prod_2,att):
     stringArray1 = stringToWords(str(prod_1[att]))
     stringArray2 = stringToWords(str(prod_2[att]))
     if att == 'shade_shape':
         stringArray1 = cleanShadeShape(str(prod_1[att]))
         stringArray2 = cleanShadeShape(str(prod_2[att]))
+    str1 = jellyfish.nysiis(str(prod_1[att]))
+    str2 = jellyfish.nysiis(str(prod_2[att]))
+    # soundex_score = ( fuzz.token_sort_ratio( str1, str2) )*0.01
     jacc_score = JaccardSimilarity(stringArray1, stringArray2)
     fuzzy_score = ( fuzz.token_sort_ratio( str(prod_1[att]).lower(), str(prod_2[att]).lower()  ) )*0.01
-    score = (jacc_score + fuzzy_score)/2
-    return score
+    LCS_score = ( longestCommonSubstringScore( str(prod_1[att]).lower(), str(prod_2[att]).lower()) )
+    # if jacc_score==0:
+    #     score = (10*LCS_score + 5*soundex_score + 15*fuzzy_score)/30
+    # else:
+    #     score = (10*LCS_score + 5*soundex_score+ 6*jacc_score + 15*fuzzy_score)/36
+    if jacc_score==0:
+        score = (10*LCS_score + 18*fuzzy_score)/28
+    else:
+        score = (10*LCS_score + 18*jacc_score + 6*fuzzy_score)/34
+    return round(score,4)
 
 def groupmatching(att, matching_header, label, match_type, process, prod_1, prod_2, phone_fields, condition, group_array):
     prod_val1 = str(prod_1[att]).strip()

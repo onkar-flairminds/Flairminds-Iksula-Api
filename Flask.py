@@ -191,11 +191,19 @@ def PreprocessProduct(product):
 def longestCommonSubstringScore(string1,string2): 
     seqMatch = SequenceMatcher(None,string1,string2) 
     match = seqMatch.find_longest_match(0, len(string1), 0, len(string2))
-    if (match.size>2):
+    if (match.size!=0):
         if len(string1)>=len(string2):
-            score = match.size/len(string1) 
+            matched_char = string1[match.a: match.a + match.size]
+            if len(matched_char)>2:
+                score = len(matched_char)/len(string1)
+            else:
+                score = 0
         elif len(string2)>=len(string1):
-            score = match.size/len(string2)
+            matched_char = string1[match.a: match.a + match.size]
+            if len(matched_char)>2:
+                score = len(matched_char)/len(string2)
+            else:
+                score = 0
         return score
     else:
         return 0

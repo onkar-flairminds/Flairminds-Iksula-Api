@@ -12,7 +12,7 @@ from string import punctuation
 try:
     import Levenshtein
     import phonenumbers
-    # from sqlalchemy import engine,create_engine
+    from sqlalchemy import engine,create_engine
     from difflib import SequenceMatcher
 except:
     os.system('pip3 install python-Levenshtein')
@@ -22,62 +22,55 @@ except:
     os.system('pip3 install pymysql')
     import Levenshtein
     import phonenumbers
-    # from sqlalchemy import engine,create_engine
+    from sqlalchemy import engine,create_engine
     from difflib import SequenceMatcher
-
-import mysql.connector as connection
 
 from flask import Flask, request, jsonify
 
-# connection_url = engine.URL.create(
-#     drivername="mysql+pymysql",
-#     username="root",
-#     password="Pass@123",
-#     host="localhost",
-#     port = 3306,
-#     database="iksula",
-# )
-# cnx = create_engine(connection_url)
+connection_url = engine.URL.create(
+    drivername="mysql+pymysql",
+    username="root",
+    password="Pass@123",
+    host="localhost",
+    port = 3306,
+    database="iksula",
+)
+cnx = create_engine(connection_url)
 try:
-    mydb = connection.connect(host="localhost", database = 'iksula',user="root", passwd="Pass@123",use_pure=True)
     query = "SELECT * FROM search_data_customer;"
-    customer = pd.read_sql(query,mydb)
+    customer = pd.read_sql(query,cnx)
     Cust = customer.copy(deep=True)
-    mydb.close() #close the connection
+    # cnx.close() #close the connection
 except Exception as e:
-    mydb.close()
+    # cnx.close()
     print('Error : '+str(e))
 try:
-    mydb = connection.connect(host="localhost", database = 'iksula',user="root", passwd="Pass@123",use_pure=True)
     query = "SELECT * FROM search_data_address;"
-    address = pd.read_sql(query,mydb)
-    mydb.close() #close the connection
+    address = pd.read_sql(query,cnx)
+    # cnx.close() #close the connection
 except Exception as e:
-    mydb.close()
+    # cnx.close()
     print('Error : '+str(e))
 try:
-    mydb = connection.connect(host="localhost", database = 'iksula',user="root", passwd="Pass@123",use_pure=True)
     query = "SELECT * FROM search_data_email;"
-    email = pd.read_sql(query,mydb)
-    mydb.close() #close the connection
+    email = pd.read_sql(query,cnx)
+    # cnx.close() #close the connection
 except Exception as e:
-    mydb.close()
+    # cnx.close()
     print('Error : '+str(e))
 try:
-    mydb = connection.connect(host="localhost", database = 'iksula',user="root", passwd="Pass@123",use_pure=True)
     query = "SELECT * FROM search_data_phone;"
-    phone = pd.read_sql(query,mydb)
-    mydb.close() #close the connection
+    phone = pd.read_sql(query,cnx)
+    # cnx.close() #close the connection
 except Exception as e:
-    mydb.close()
+    # cnx.close()
     print('Error : '+str(e))
 try:
-    mydb = connection.connect(host="localhost", database = 'iksula',user="root", passwd="Pass@123",use_pure=True)
     query = "Select * from master_products_datas;"
-    product = pd.read_sql(query,mydb)
-    mydb.close() #close the connection
+    product = pd.read_sql(query,cnx)
+    # cnx.close() #close the connection
 except Exception as e:
-    mydb.close()
+    # cnx.close()
     print('Error : '+str(e))
 
 def GroupAndMerge(Cust,df,agg_dict):
@@ -191,7 +184,7 @@ def PreprocessProduct(product):
 def longestCommonSubstringScore(string1,string2): 
     seqMatch = SequenceMatcher(None,string1,string2) 
     match = seqMatch.find_longest_match(0, len(string1), 0, len(string2))
-    if (match.size>2):
+    if (match.size!=0):
         if len(string1)>=len(string2):
             score = match.size/len(string1) 
         elif len(string2)>=len(string1):
@@ -520,4 +513,4 @@ def Run():
 
 if __name__ == '__main__':
     app.run(host = '0.0.0.0',port='5000',debug=False)
-    # cnx.dispose()
+    cnx.dispose()

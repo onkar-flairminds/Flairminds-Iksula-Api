@@ -1,6 +1,6 @@
 from operator import indexOf
 from typing import Dict
-from urllib.parse import ParseResultBytes
+from urllib.parse import ParseResultBytes,quote_plus
 import numpy as np
 import pandas as pd
 import numpy as np
@@ -25,17 +25,18 @@ except:
     from sqlalchemy import engine,create_engine
     from difflib import SequenceMatcher
 
+drivername="mysql+pymysql"
+username="root"
+password="Pass@123"
+host="localhost"
+port = 3306
+database="iksula"
+
 from flask import Flask, request, jsonify
 
-connection_url = engine.URL.create(
-    drivername="mysql+pymysql",
-    username="root",
-    password="Pass@123",
-    host="localhost",
-    port = 3306,
-    database="iksula",
-)
+connection_url = '{}://{}:{}@{}:{}/{}'.format(drivername,username,quote_plus(password),host,port,database)
 cnx = create_engine(connection_url)
+
 try:
     query = "SELECT * FROM search_data_customer;"
     customer = pd.read_sql(query,cnx)

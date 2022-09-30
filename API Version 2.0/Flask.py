@@ -149,7 +149,7 @@ def SimilarityScore(prod_1,prod_2,att):
     # else:
     #     score = (10*LCS_score + 5*soundex_score+ 6*jacc_score + 15*fuzzy_score)/36
     if jacc_score==0:
-        score = (10*LCS_score + 18*fuzzy_score)/28
+        score = (18*LCS_score + 10*fuzzy_score)/28
     else:
         score = (10*LCS_score + 18*jacc_score + 6*fuzzy_score)/34
     return round(score,4)

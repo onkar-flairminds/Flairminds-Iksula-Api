@@ -19,6 +19,7 @@ except:
     os.system('pip3 install Phonenumbers')
     os.system('pip3 install sqlalchemy')
     os.system('pip3 install difflib')
+    os.system('pip3 install pymysql')
     import Levenshtein
     import phonenumbers
     from sqlalchemy import engine,create_engine
@@ -199,7 +200,7 @@ def SimilarityScore(string1,string2):
     fuzzy_score = ( fuzz.token_sort_ratio( str(string1).lower().strip(), str(string2).lower().strip()) )*0.01
     LCS_score = ( longestCommonSubstringScore( str(string1).lower(), str(string2).lower()) )
     if jacc_score==0:
-        score = (10*LCS_score + 18*fuzzy_score)/28
+        score = (18*LCS_score + 10*fuzzy_score)/28
     else:
         score = (10*LCS_score + 18*jacc_score + 6*fuzzy_score)/34
     return round(score,4)

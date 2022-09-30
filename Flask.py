@@ -118,6 +118,7 @@ try:
     Cust = MergeAllData(Cust, address, email, phone)
 except Exception as e:
     print('Error on Merging : '+str(e))
+
 app = Flask(__name__)
 
 def exactSimilarMatch(string1, string2):
@@ -369,7 +370,7 @@ def applyDictionaryLogic(pid, pid_2_list, prod_pid, prod_df, identifier, exactAt
                     elif att =='manufacturer_warranty':
                         prod_val1 = [cleanWarranty(value) for value in prod_val1]
                         prod_val2 = [cleanWarranty(value) for value in prod_val2]
-                    elif att=='zip':
+                    elif att in ('zip','PostalCode'):
                         prod_val1 = [cleanZip(value) for value in prod_val1]
                         prod_val2 = [cleanZip(value) for value in prod_val2]
             
@@ -416,7 +417,10 @@ def applyDictionaryLogic(pid, pid_2_list, prod_pid, prod_df, identifier, exactAt
                         fuzzyAttMatched.append(str(att))
 
         exactScore = exactAttScore
-        fuzzyScore = len(fuzzyAttMatched)/len(fuzzyAtt)
+        if len(fuzzyAtt)!=0:
+            fuzzyScore = len(fuzzyAttMatched)/len(fuzzyAtt)
+        else:
+            fuzzyScore = 0
         
         if exactScore==1.0:
             Matching_Score = 1.0

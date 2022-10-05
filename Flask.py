@@ -42,7 +42,8 @@ product_table = os.getenv("product_table")
 master_common_identifier = os.getenv("master_common_identifier")
 test_identifier = os.getenv("test_identifier")
 
-url = r"postgresql://{}:{}@{}:{}/{}".format(username,quote_plus(password),host,port,database)
+url = r"postgresql://{}:{}@{}:{}/{}".format(username,quote_plus(str(password)),host,port,database)
+print(url)
 engine = create_engine(url, pool_size=50, echo=False)
 
 

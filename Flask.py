@@ -1,33 +1,17 @@
 from operator import indexOf
 from typing import Dict
-from urllib.parse import ParseResultBytes
 import numpy as np
 import pandas as pd
 import numpy as np
 import datetime
 import re
 import os
-from fuzzywuzzy import fuzz
-from string import punctuation
 from urllib.parse import ParseResultBytes,quote_plus
 from dotenv import load_dotenv
 try:
-    import Levenshtein
-    import phonenumbers
     from sqlalchemy import engine,create_engine
-    from difflib import SequenceMatcher
 except:
-    os.system('pip3 install python-Levenshtein')
-    os.system('pip3 install Phonenumbers')
     os.system('pip3 install sqlalchemy')
-    os.system('pip3 install difflib')
-    os.system('pip3 install pymysql')
-    import Levenshtein
-    import phonenumbers
-    from sqlalchemy import engine,create_engine
-    from difflib import SequenceMatcher
-
-import mysql.connector as connection
 
 from flask import Flask, request, jsonify
 env_file_Location = "connection.env"

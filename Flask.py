@@ -78,9 +78,11 @@ try:
      #close the connection
 except Exception as e:
     print('Error : '+str(e))
+
 def createMatchingAttributesJson(att_list, current_val_list, row, mode='similar'):
-    matching_attributes = []
+    matching_attributes = {}
     for i in range(len(att_list)):
+        
         att_dict = {}
         att_dict['attribute_name'] = str(att_list[i])
         att_dict['current_value'] = str(current_val_list[i])
@@ -92,8 +94,9 @@ def createMatchingAttributesJson(att_list, current_val_list, row, mode='similar'
                 att_dict['score'] = 1.0
             else:
                 att_dict['score'] = 0.0
-        matching_attributes.append(att_dict)
+        matching_attributes[str(att_list[i])] = [att_dict]
     return pd.io.json.dumps(matching_attributes)
+
 def checkMatching(matching_id,exactAtt, exactValue, fuzzyAtt, fuzzyValue, customer_columns, address_columns, phone_columns, email_columns):
     url = r"postgresql://{}:{}@{}:{}/{}".format(username,quote_plus(password),host,port,database)
     engine = create_engine(url, pool_size=50, echo=False)

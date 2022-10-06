@@ -78,9 +78,23 @@ try:
      #close the connection
 except Exception as e:
     print('Error : '+str(e))
-
+def createMatchingAttributesJson(att_list, current_val_list, row, mode='similar'):
+    matching_attributes = []
+    for i in range(len(att_list)):
+        att_dict = {}
+        att_dict['attribute_name'] = str(att_list[i])
+        att_dict['current_value'] = str(current_val_list[i])
+        att_dict['found_value'] = str(row[att_list[i]])
+        if mode=='similar':
+            att_dict['score'] = round(row['score_{}'.format(str(att_list[i])).lower()],4)
+        elif mode=='exact':
+            if att_dict['current_value']==att_dict['found_value']:
+                att_dict['score'] = 1.0
+            else:
+                att_dict['score'] = 0.0
+        matching_attributes.append(att_dict)
+    return pd.io.json.dumps(matching_attributes)
 def checkMatching(matching_id,exactAtt, exactValue, fuzzyAtt, fuzzyValue, customer_columns, address_columns, phone_columns, email_columns):
-    
     url = r"postgresql://{}:{}@{}:{}/{}".format(username,quote_plus(password),host,port,database)
     engine = create_engine(url, pool_size=50, echo=False)
     exact_String = ''
@@ -110,23 +124,25 @@ def checkMatching(matching_id,exactAtt, exactValue, fuzzyAtt, fuzzyValue, custom
         exact_Query = f"""
         select *
         from {customer_table} as customer 
-        inner join {email_table} as email on customer."{master_common_identifier}" = email."{master_common_identifier}"
-        inner join {phone_table} as phone on customer."{master_common_identifier}" = phone."{master_common_identifier}"
-        inner join {address_table} as address on customer."{master_common_identifier}" = address."{master_common_identifier}"
+        inner join {email_table} as email using ("{master_common_identifier}")
+        inner join {phone_table} as phone using ("{master_common_identifier}")
+        inner join {address_table} as address using ("{master_common_identifier}")
         where {exact_String};
         """
         exact_match = pd.read_sql(exact_Query,engine)
-        for i in range(len(fuzzyAtt)):
-            exact_match['score_{}'.format(fuzzyAtt[i].lower())] = 0.0
-        exact_match['overall_score']=1.0
-        exact_match['matching_id'] = matching_id
         if not exact_match.empty:
+            exact_match['matching_score'] = 1.0
+            exact_match['matching_id'] = matching_id
+            exact_match['matching_attributes'] = exact_match.apply(lambda x: createMatchingAttributesJson(exactAtt, exactValue, x, mode='exact'), axis = 1)
             return exact_match
     if len(fuzzyAtt)!=0:
         Similarity_string = ''
         Addition_String = ''
         Add_count = len(fuzzyAtt)
+        identifier_dict = {}
+        score_col_list = []
         for i in range(len(fuzzyAtt)):
+            score_col_list.append('score_{}'.format(str(fuzzyAtt[i]).lower()))
             Addition_String+= 'score_{} + '.format(fuzzyAtt[i])
             if fuzzyAtt[i] in customer_columns:
                 if type(fuzzyValue[i])==str:
@@ -151,18 +167,23 @@ def checkMatching(matching_id,exactAtt, exactValue, fuzzyAtt, fuzzyValue, custom
         Similarity_string = Similarity_string[:-1]
         Addition_String  = Addition_String[:-3]
         similar_Query = f"""
-        select *, (({Addition_String})/{Add_count}) as Overall_Score from (select * ,
+        select *, (({Addition_String})/{Add_count}) as matching_score from (select * ,
         {Similarity_string}
         from {customer_table} as customer
-        inner join {email_table} as email on customer."{master_common_identifier}" = email."{master_common_identifier}"
-        inner join {phone_table} as phone on customer."{master_common_identifier}" = phone."{master_common_identifier}"
-        inner join {address_table} as address on customer."{master_common_identifier}" = address."{master_common_identifier}") as new_table
-        order by Overall_Score desc limit 10;
+        inner join {email_table} as email using ("{master_common_identifier}")
+        inner join {phone_table} as phone using ("{master_common_identifier}")
+        inner join {address_table} as address using ("{master_common_identifier}")) as new_table
+        order by matching_score desc limit 100;
         """
         similar_match = pd.read_sql(similar_Query,engine)
-        # similar_match['Overall_Score'] = similar_match.iloc[:, (len(fuzzyAtt)*-1):].apply(np.array, axis = 1).apply(np.mean)
-        final = similar_match.sort_values(by = 'overall_score', ascending = False)[:10]
+        similar_match = similar_match.sort_values(by = 'matching_score', ascending = False)
+        Try = similar_match.loc[similar_match.groupby('CustTreeNodeID').matching_score.idxmax()]
+        Try = Try.sort_values(by = 'matching_score', ascending = False)
+        final = Try.iloc[:3]
         final['matching_id'] = matching_id
+        final['matching_score'] = final.apply(lambda x : round(x['matching_score'], 4), axis=1)
+        final['matching_attributes'] = final.apply(lambda x: createMatchingAttributesJson(fuzzyAtt, fuzzyValue, x), axis = 1)
+        final.drop(score_col_list, axis = 1, inplace = True)
         return final
     else:
         return pd.DataFrame()

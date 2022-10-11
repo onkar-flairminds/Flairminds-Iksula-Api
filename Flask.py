@@ -7,7 +7,7 @@ import numpy as np
 import datetime
 import re
 import os
-import swifter
+# import swifter
 from urllib.parse import ParseResultBytes,quote_plus
 from dotenv import load_dotenv
 try:

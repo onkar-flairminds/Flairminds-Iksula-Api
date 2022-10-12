@@ -20,7 +20,6 @@ env_file_Location = "connection.env"
 if os.path.exists(env_file_Location):
     load_dotenv(env_file_Location)
 
-
 drivername="mysql+pymysql"
 username=os.getenv("user")
 password=os.getenv("password")
@@ -84,7 +83,11 @@ def createMatchingAttributesJson(att_list, current_val_list, row, mode='similar'
         att_dict['current_value'] = str(current_val_list[i])
         att_dict['found_value'] = str(row[att_list[i]])
         if mode=='similar':
-            att_dict['score'] = round(row['score_{}'.format(str(att_list[i])).lower()],4)
+            score = round(row['score_{}'.format(str(att_list[i])).lower()],4)
+            if score>0.10:
+                att_dict['score'] = score
+            else:
+                att_dict['score'] = 0.0
         elif mode=='exact':
             if att_dict['current_value']==att_dict['found_value']:
                 att_dict['score'] = 1.0
@@ -102,13 +105,16 @@ def createGroupMatchingJson(att_group_info, group, group_similar, test_row, row,
                     group_att = {}
                     group_att['group_name'] = att_group_info[att]['label']
                     group_att['field_name'] = str(att)
-                    
                     score_list = []
                     if att_group_info[str(att)]['label']=='phone':
                         for master_att in master_phone_columns.split():
                             score = round(row['score_{}_{}_{}'.format(type.lower(),att.lower(),master_att.lower())],4)
-                            score_list.append(score)
-                            group_att['matching_fields'][master_att] = score
+                            if score > 0.10:
+                                score_list.append(score)
+                                group_att['matching_fields'][master_att] = score
+                            else:
+                                score_list.append(0)
+                                group_att['matching_fields'][master_att] = 0.0
                     else:
                         for master_att in group[type]['data']:
                             score = round(row['score_{}_{}_{}'.format(type.lower(),att.lower(),master_att.lower())],4)
@@ -155,6 +161,7 @@ def createGroupMatchingJson(att_group_info, group, group_similar, test_row, row,
                     group_att['group_score'] = max(score_list)
                     group_matching[type].append(group_att)
     return pd.io.json.dumps(group_matching)
+
 def checkMatching(att_group_info, group, group_exact, group_similar,filter_col, filter_val, matching_id,exactAtt, exactValue, fuzzyAtt, fuzzyValue, customer_columns, address_columns, phone_columns, email_columns, row):
     # url = r"postgresql://{}:{}@{}:{}/{}".format(username,quote_plus(password),host,port,database)
     if len(exactAtt)!=0 or len(group_exact)!=0:
@@ -187,7 +194,8 @@ def checkMatching(att_group_info, group, group_exact, group_similar,filter_col, 
         Similarity_string = Similarity_string[:-1]
         group_similar_String = group_similar_String[:-1]
         Addition_String  = Addition_String[:-3]
-        Add_count = len(filter_fuzzy_att)
+        Add_count = len(fuzzyAtt)
+        print(Add_count)
         similar_Query = createSimilarString(filter_col, filter_val, Similarity_string, Addition_String, group_similar_String, Add_count)
         if Similarity_string!='' or group_similar_String!='':
             similar_match = pd.read_sql(similar_Query,engine)
@@ -374,7 +382,6 @@ def createGroupExactString(att_group_info, group_exact, customer_columns, addres
     for att in group_exact:
         if att_group_info[str(att)]['label']=='phone':
             for master_att in master_phone_columns.split():
-                print(row[att], type(row[att]))
                 if row[att]!="":
                     group_exact_String += """phone."{}"::text='{}' or """.format(master_att, row[att],att)
         else:

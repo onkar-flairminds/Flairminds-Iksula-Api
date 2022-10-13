@@ -7,6 +7,7 @@ import numpy as np
 import datetime
 import re
 import os
+from difflib import SequenceMatcher
 # import swifter
 from urllib.parse import ParseResultBytes,quote_plus
 from dotenv import load_dotenv
@@ -95,6 +96,7 @@ def createMatchingAttributesJson(att_list, current_val_list, row, mode='similar'
                 att_dict['score'] = 0.0
         matching_attributes[str(att_list[i])] = [att_dict]
     return pd.io.json.dumps(matching_attributes)
+
 def createGroupMatchingJson(att_group_info, group, group_similar, test_row, row, mode='similar'):
     group_matching = {}
     for type in group.keys():
@@ -194,9 +196,8 @@ def checkMatching(att_group_info, group, group_exact, group_similar,filter_col, 
         Similarity_string = Similarity_string[:-1]
         group_similar_String = group_similar_String[:-1]
         Addition_String  = Addition_String[:-3]
-        Add_count = len(fuzzyAtt)
-        print(Add_count)
-        similar_Query = createSimilarString(filter_col, filter_val, Similarity_string, Addition_String, group_similar_String, Add_count)
+        Add_count = len(fuzzyAtt)+len(exactAtt)+len(group.keys())
+        similar_Query = createSimilarQuery(filter_col, filter_val, Similarity_string, Addition_String, group_similar_String, Add_count)
         if Similarity_string!='' or group_similar_String!='':
             similar_match = pd.read_sql(similar_Query,engine)
             if similar_match.empty:
@@ -205,6 +206,8 @@ def checkMatching(att_group_info, group, group_exact, group_similar,filter_col, 
             Try = similar_match.loc[similar_match.groupby('CustTreeNodeID').matching_score.idxmax()]
             Try = Try.sort_values(by = 'matching_score', ascending = False)
             final = Try.iloc[:3]
+            # squence_match = final.apply(lambda x : SequenceStringMatching(x, filter_fuzzy_att, Add_count, row), axis=1)
+            # print(squence_match)
             final['matching_score'] = final.apply(lambda x : round(x['matching_score'], 4), axis=1)
             final['matching_id'] = matching_id
             final['matching_attributes'] = final.apply(lambda x: createMatchingAttributesJson(filter_fuzzy_att, filter_fuzzy_val, x), axis = 1)
@@ -217,49 +220,83 @@ def checkMatching(att_group_info, group, group_exact, group_similar,filter_col, 
     else:
         return pd.DataFrame()
 
-def createSimilarString(filter_col, filter_val, Similarity_string, Addition_String, group_similar_String, Add_count):
+def longestCommonSubstringScore(string1,string2): 
+    match = SequenceMatcher(None,string1,string2).find_longest_match(0, len(string1), 0, len(string2))
+    if (match.size!=0):
+        if len(string1)>=len(string2):
+            matched_char = string1[match.a: match.a + match.size]
+            if len(matched_char)>2:
+                score = len(matched_char)/len(string1)
+            else:
+                score = 0
+        elif len(string2)>=len(string1):
+            matched_char = string1[match.a: match.a + match.size]
+            if len(matched_char)>2:
+                score = len(matched_char)/len(string2)
+            else:
+                score = 0
+        return score
+    else:
+        return 0
+def SequenceStringMatching(result_row, filter_fuzzy_att, Add_count, test_row):
+    score_addition = 0
+    for att in filter_fuzzy_att:
+        original_score = result_row[f'score_{att.lower()}']
+        result_string = result_row[att]
+        test_string = test_row[att]
+        score = longestCommonSubstringScore(result_string, test_string)
+        seq_avg_Score = (2*original_score + score) / 3
+        result_row[f'score_{att.lower()}'] = seq_avg_Score
+        score_addition+= seq_avg_Score
+    result_row['matching_score'] = score_addition/Add_count
+    return result_row
+def createSimilarQuery(filter_col, filter_val, Similarity_string, Addition_String, group_similar_String, Add_count):
     if filter_col == '':
         if group_similar_String=='':
             similar_Query = f"""
-                select *, (({Addition_String})/{Add_count}) as matching_score from (select * ,
+                select * from ( select *, (({Addition_String})/{Add_count}) as matching_score from (select * ,
                 {Similarity_string}
                 from {customer_table} as customer
                 left join {email_table} as email using ("{master_common_identifier}")
                 left join {phone_table} as phone using ("{master_common_identifier}")
                 left join {address_table} as address using ("{master_common_identifier}")) as new_table
+                order by matching_score desc ) as nTable
                 order by matching_score desc limit 200;
                 """
         else:
             similar_Query = f"""
-                select *, (({Addition_String})/{Add_count}) as matching_score from (select * ,
+                select * from (select *, (({Addition_String})/{Add_count}) as matching_score from (select * ,
                 {Similarity_string}, {group_similar_String}
                 from {customer_table} as customer
                 left join {email_table} as email using ("{master_common_identifier}")
                 left join {phone_table} as phone using ("{master_common_identifier}")
                 left join {address_table} as address using ("{master_common_identifier}")) as new_table
+                order by matching_score desc ) as nTable
                 order by matching_score desc limit 200;
                 """
     else:
         if group_similar_String=='':
             similar_Query = f"""
-                select *, (({Addition_String})/{Add_count}) as matching_score from (select * ,
+                select * from (select *, (({Addition_String})/{Add_count}) as matching_score from (select * ,
                 {Similarity_string}
                 from {customer_table} as customer
                 left join {email_table} as email using ("{master_common_identifier}")
                 left join {phone_table} as phone using ("{master_common_identifier}")
                 left join {address_table} as address using ("{master_common_identifier}")) as new_table
                 where "{filter_col}" = '{filter_val}'
+                order by matching_score desc ) as nTable
                 order by matching_score desc limit 200;
                 """
         else:
             similar_Query = f"""
-                select *, (({Addition_String})/{Add_count}) as matching_score from (select * ,
+                select * from (select *, (({Addition_String})/{Add_count}) as matching_score from (select * ,
                 {Similarity_string} , {group_similar_String}
                 from {customer_table} as customer
                 left join {email_table} as email using ("{master_common_identifier}")
                 left join {phone_table} as phone using ("{master_common_identifier}")
                 left join {address_table} as address using ("{master_common_identifier}")) as new_table
                 where "{filter_col}" = '{filter_val}'
+                order by matching_score desc ) as nTable
                 order by matching_score desc limit 200;
                 """
     return similar_Query
@@ -440,7 +477,7 @@ app = Flask(__name__)
 
 @app.route('/get_results', methods = ['POST'])
 def Run():
-    request_data = pd.io.json.loads(request.data)
+    # request_data = pd.io.json.loads(request.data)
     try:
         # request_data = eval(pd.io.json.loads(request.data))
         # data_df = pd.read_json(request_data)
@@ -481,7 +518,7 @@ def Run():
         # group_similar = list(set.intersection(set(group_similar), set(all_cols)))
         # group_att = list(set.intersection(set(group_att), set(all_cols)))
 
-        group_types = list(request_data['action-group'].keys())
+        # group_types = list(request_data['action-group'].keys())
         global Dict
         Dict = {}
         global Similarity_Dict
@@ -491,9 +528,9 @@ def Run():
                         'StateCode':'AddressID', 'PostalCode':'AddressID', 'County':'AddressID','GeoCode':'AddressID', 'CountryCode':'AddressID'}
 
         if test['data_type'].iloc[0]=='customer':
-            similar_exact = ['zip','city','country','state']
+            # similar_exact = ['zip','city','country','state']
             # similar_exact = []
-            phone_fields = ['phone1', 'phone2', 'PhoneNumber']
+            # phone_fields = ['phone1', 'phone2', 'PhoneNumber']
             Attributes = list(set(exactAtt + fuzzyAtt+ group_att))
             exactAtt = [att for att in set.intersection(set(all_cols),set(exactAtt))]
             fuzzyAtt = [att for att in set.intersection(set(all_cols),set(fuzzyAtt))]

@@ -175,6 +175,7 @@ def checkMatching(att_group_info, group, group_exact, group_similar,filter_col, 
             group_exact_String = group_exact_String[:-4]
         filter_table = returnFilterInfo(filter_col, customer_columns, address_columns, phone_columns, email_columns)
         exact_Query = createExactQuery(filter_col, filter_val, exact_String, group_exact_String, filter_table)
+        print(exact_Query)
         if exact_String!='' or group_exact_String!='':
             exact_match = pd.read_sql(exact_Query,engine)
             if not exact_match.empty:
@@ -198,6 +199,7 @@ def checkMatching(att_group_info, group, group_exact, group_similar,filter_col, 
         Addition_String  = Addition_String[:-3]
         Add_count = len(fuzzyAtt)+len(exactAtt)+len(group.keys())
         similar_Query = createSimilarQuery(filter_col, filter_val, Similarity_string, Addition_String, group_similar_String, Add_count)
+        print(similar_Query)
         if Similarity_string!='' or group_similar_String!='':
             similar_match = pd.read_sql(similar_Query,engine)
             if similar_match.empty:
@@ -316,7 +318,7 @@ def createFuzzyString(fuzzyAtt, fuzzyValue, customer_columns, address_columns, p
             Addition_String+= 'score_{} + '.format(fuzzyAtt[i])
             filter_fuzzy_att.append(fuzzyAtt[i])
             filter_fuzzy_val.append(fuzzyValue[i])
-            Similarity_string += """SIMILARITY(customer."{}"::text, '{}') AS score_{},""".format(fuzzyAtt[i], fuzzyValue[i],fuzzyAtt[i])
+            Similarity_string += """SIMILARITY("{}"::text, '{}') AS score_{},""".format(fuzzyAtt[i], fuzzyValue[i],fuzzyAtt[i])
     return i,Similarity_string, Addition_String, filter_fuzzy_att, filter_fuzzy_val, score_col_list
 
 def createExactQuery(filter_col, filter_val, exact_String, group_exact_String, filter_table):
@@ -385,12 +387,12 @@ def createGroupExactString(att_group_info, group_exact, customer_columns, addres
                 if att in email_columns:
                     if row[att]!="":
                         if att_group_info[att]['process']=='email':
-                            group_exact_String += """REGEXP_REPLACE(email."{}"::text, '@.*', '')=REGEXP_REPLACE('{}', '@.*', '') or """.format(master_att, row[att],att)
+                            group_exact_String += """REGEXP_REPLACE("{}"::text, '@.*', '')=REGEXP_REPLACE('{}', '@.*', '') or """.format(master_att, row[att],att)
                         else:
                             group_exact_String += """email."{}"::text='{}' or """.format(master_att, row[att],att)
                 else:
                     if row[master_att]!="":
-                        group_exact_String += """customer."{}"::text='{}' or """.format(master_att, row[att])
+                        group_exact_String += """"{}"::text='{}' or """.format(master_att, row[att])
 
     return group_exact_String
 
@@ -399,9 +401,9 @@ def createExactstring(exactAtt, exactValue, customer_columns, address_columns, p
     for i in range(len(exactAtt)):
         if type(exactValue[i])==str:
             if exactValue[i]!="":
-                exact_String += """customer."{}"='{}' or """.format(exactAtt[i], exactValue[i],exactAtt[i])
+                exact_String += """"{}"='{}' or """.format(exactAtt[i], exactValue[i],exactAtt[i])
         else:
-            exact_String += """customer."{}"={} or """.format(exactAtt[i], exactValue[i],exactAtt[i])
+            exact_String += """"{}"={} or """.format(exactAtt[i], exactValue[i],exactAtt[i])
     return exact_String
 
 app = Flask(__name__)

@@ -1,15 +1,13 @@
 from operator import indexOf
 from tkinter import scrolledtext
 from typing import Dict
-import numpy as np
 import pandas as pd
 import numpy as np
-import datetime
 import re
 import os
 from difflib import SequenceMatcher
 # import swifter
-from urllib.parse import ParseResultBytes,quote_plus
+from urllib.parse import quote_plus
 from dotenv import load_dotenv
 try:
     from sqlalchemy import engine,create_engine
@@ -39,7 +37,6 @@ master_phone_columns = os.getenv("master_phone_columns")
 url = r"postgresql://{}:{}@{}:{}/{}".format(username,quote_plus(str(password)),host,port,database)
 print(url)
 engine = create_engine(url, pool_size=50, echo=False)
-
 
 try:
     query = "SELECT * FROM {};".format(customer_table)
@@ -175,7 +172,6 @@ def checkMatching(att_group_info, group, group_exact, group_similar,filter_col, 
             group_exact_String = group_exact_String[:-4]
         filter_table = returnFilterInfo(filter_col, customer_columns, address_columns, phone_columns, email_columns)
         exact_Query = createExactQuery(filter_col, filter_val, exact_String, group_exact_String, filter_table)
-        print(exact_Query)
         if exact_String!='' or group_exact_String!='':
             exact_match = pd.read_sql(exact_Query,engine)
             if not exact_match.empty:
@@ -199,7 +195,6 @@ def checkMatching(att_group_info, group, group_exact, group_similar,filter_col, 
         Addition_String  = Addition_String[:-3]
         Add_count = len(fuzzyAtt)+len(exactAtt)+len(group.keys())
         similar_Query = createSimilarQuery(filter_col, filter_val, Similarity_string, Addition_String, group_similar_String, Add_count)
-        print(similar_Query)
         if Similarity_string!='' or group_similar_String!='':
             similar_match = pd.read_sql(similar_Query,engine)
             if similar_match.empty:

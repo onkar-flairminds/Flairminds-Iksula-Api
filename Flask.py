@@ -76,6 +76,9 @@ except Exception as e:
 def cleanEmailTail(string):
     return re.sub(r'@.*', '', str(string))
 
+def removeStringBlockers(string):
+    return re.sub(r'''[',"]''', '', str(string))
+
 def createMatchingAttributesJson(att_list, current_val_list, row, mode='similar'):
     matching_attributes = {}
     for i in range(len(att_list)):
@@ -99,69 +102,70 @@ def createMatchingAttributesJson(att_list, current_val_list, row, mode='similar'
 
 def createGroupMatchingJson(att_group_info, group, group_similar, test_row, row, mode='similar'):
     group_matching = {}
-    for type in group.keys():
-        group_matching[type] = []
-        for att in group[type]['data']:
-            if mode=='similar':
-                if group[type]['match-type']=='similar':
-                    group_att = {}
-                    group_att['group_name'] = att_group_info[att]['label']
-                    group_att['field_name'] = str(att)
-                    score_list = []
-                    if att_group_info[str(att)]['label']=='phone':
-                        for master_att in master_phone_columns.split():
-                            score = round(row['score_{}_{}_{}'.format(type.lower(),att.lower(),master_att.lower())],4)
-                            if score > 0.10:
+    if group!=[]:
+        for type in group.keys():
+            group_matching[type] = []
+            for att in group[type]['data']:
+                if mode=='similar':
+                    if group[type]['match-type']=='similar':
+                        group_att = {}
+                        group_att['group_name'] = att_group_info[att]['label']
+                        group_att['field_name'] = str(att)
+                        score_list = []
+                        if att_group_info[str(att)]['label']=='phone':
+                            for master_att in master_phone_columns.split():
+                                score = round(row['score_{}_{}_{}'.format(type.lower(),att.lower(),master_att.lower())],4)
+                                if score > 0.10:
+                                    score_list.append(score)
+                                    group_att['matching_fields'][master_att] = score
+                                else:
+                                    score_list.append(0)
+                                    group_att['matching_fields'][master_att] = 0.0
+                        else:
+                            for master_att in group[type]['data']:
+                                score = round(row['score_{}_{}_{}'.format(type.lower(),att.lower(),master_att.lower())],4)
                                 score_list.append(score)
                                 group_att['matching_fields'][master_att] = score
-                            else:
-                                score_list.append(0)
-                                group_att['matching_fields'][master_att] = 0.0
-                    else:
-                        for master_att in group[type]['data']:
-                            score = round(row['score_{}_{}_{}'.format(type.lower(),att.lower(),master_att.lower())],4)
-                            score_list.append(score)
-                            group_att['matching_fields'][master_att] = score
-                    group_att['group_score'] = max(score_list)
-                    group_matching[type].append(group_att)
-            else:
-                if group[type]['match-type']=='exact':
-                    group_att = {}
-                    group_att['group_name'] = att_group_info[att]['label']
-                    group_att['field_name'] = str(att)
-                    group_att['matching_fields'] = {}
-                    score_list = []
-                    att_val_test = str(test_row[att])
-                    if att_group_info[str(att)]['label']=='phone':
-                        for master_att in master_phone_columns.split():
-                            att_val_master = row[master_att]
-                            if group[type]['process']=='email':
-                                att_val_master = cleanEmailTail(row[master_att])
-                                att_val_test = cleanEmailTail(test_row[att])
-                            if att_val_test==att_val_master:
-                                group_att['matching_fields'][master_att] = 1.0
-                                score_list.append(1.0)
-                                group_att['matching_value'] = row[master_att]
-                            else:
-                                group_att['matching_fields'][master_att] = 0.0
-                                score_list.append(0.0)
-                                group_att['matching_value'] = ""
-                    else:
-                        for master_att in group[type]['data']:
-                            att_val_master = row[master_att]
-                            if group[type]['process']=='email':
-                                att_val_master = cleanEmailTail(row[master_att])
-                                att_val_test = cleanEmailTail(test_row[att])
-                            if att_val_test==att_val_master:
-                                group_att['matching_fields'][master_att] = 1.0
-                                score_list.append(1.0)
-                                group_att['matching_value'] = row[master_att]
-                            else:
-                                group_att['matching_fields'][master_att] = 0.0
-                                score_list.append(0.0)
-                                group_att['matching_value'] = ""
-                    group_att['group_score'] = max(score_list)
-                    group_matching[type].append(group_att)
+                        group_att['group_score'] = max(score_list)
+                        group_matching[type].append(group_att)
+                else:
+                    if group[type]['match-type']=='exact':
+                        group_att = {}
+                        group_att['group_name'] = att_group_info[att]['label']
+                        group_att['field_name'] = str(att)
+                        group_att['matching_fields'] = {}
+                        score_list = []
+                        att_val_test = str(test_row[att])
+                        if att_group_info[str(att)]['label']=='phone':
+                            for master_att in master_phone_columns.split():
+                                att_val_master = row[master_att]
+                                if group[type]['process']=='email':
+                                    att_val_master = cleanEmailTail(row[master_att])
+                                    att_val_test = cleanEmailTail(test_row[att])
+                                if att_val_test==att_val_master:
+                                    group_att['matching_fields'][master_att] = 1.0
+                                    score_list.append(1.0)
+                                    group_att['matching_value'] = row[master_att]
+                                else:
+                                    group_att['matching_fields'][master_att] = 0.0
+                                    score_list.append(0.0)
+                                    group_att['matching_value'] = ""
+                        else:
+                            for master_att in group[type]['data']:
+                                att_val_master = row[master_att]
+                                if group[type]['process']=='email':
+                                    att_val_master = cleanEmailTail(row[master_att])
+                                    att_val_test = cleanEmailTail(test_row[att])
+                                if att_val_test==att_val_master:
+                                    group_att['matching_fields'][master_att] = 1.0
+                                    score_list.append(1.0)
+                                    group_att['matching_value'] = row[master_att]
+                                else:
+                                    group_att['matching_fields'][master_att] = 0.0
+                                    score_list.append(0.0)
+                                    group_att['matching_value'] = ""
+                        group_att['group_score'] = max(score_list)
+                        group_matching[type].append(group_att)
     return pd.io.json.dumps(group_matching)
 
 def checkMatching(att_group_info, group, group_exact, group_similar,filter_col, filter_val, matching_id,exactAtt, exactValue, fuzzyAtt, fuzzyValue, customer_columns, address_columns, phone_columns, email_columns, row):
@@ -196,7 +200,10 @@ def checkMatching(att_group_info, group, group_exact, group_similar,filter_col, 
         Similarity_string = Similarity_string[:-1]
         group_similar_String = group_similar_String[:-1]
         Addition_String  = Addition_String[:-3]
-        Add_count = len(fuzzyAtt)+len(exactAtt)+len(group.keys())
+        if group!=[]:
+            Add_count = len(fuzzyAtt)+len(exactAtt)+len(group.keys())
+        else:
+            Add_count = len(fuzzyAtt)+len(exactAtt)
         similar_Query = createSimilarQuery(filter_col, filter_val, Similarity_string, Addition_String, group_similar_String, Add_count)
         if Similarity_string!='' or group_similar_String!='':
             similar_match = pd.read_sql(similar_Query,engine)
@@ -308,21 +315,21 @@ def CreateGroupSimilarString(att_group_info, group_similar, fuzzyAtt, customer_c
         if row[att]!="":
             if att_group_info[str(att)]['label']=='phone':
                 for master_att in master_phone_columns.split():
-                    group_similar_String += """SIMILARITY(phone."{}"::text, '{}') AS score_{}_{}_{},""".format(master_att, row[att],att_group_info[att]['type'],att,master_att)
+                    group_similar_String += """SIMILARITY(phone."{}"::text, '{}') AS score_{}_{}_{},""".format(master_att, removeStringBlockers(row[att]),att_group_info[att]['type'],att,master_att)
             else:
                 for master_att in att_group_info[att]['data']:
                     group_score_list.append('score_{}_{}_{}'.format(att_group_info[att]['type'].lower(),att.lower(),master_att.lower()))
                     if att in customer_columns:
-                        group_similar_String += """SIMILARITY(customer."{}"::text, '{}') AS score_{}_{}_{},""".format(master_att, row[att], att_group_info[att]['type'],att,master_att)
+                        group_similar_String += """SIMILARITY(customer."{}"::text, '{}') AS score_{}_{}_{},""".format(master_att, removeStringBlockers(row[att]), att_group_info[att]['type'],att,master_att)
                     elif att in address_columns:
-                        group_similar_String += """SIMILARITY(address."{}"::text, '{}') AS score_{}_{}_{},""".format(master_att, row[att],att_group_info[att]['type'],att,master_att)
+                        group_similar_String += """SIMILARITY(address."{}"::text, '{}') AS score_{}_{}_{},""".format(master_att, removeStringBlockers(row[att]),att_group_info[att]['type'],att,master_att)
                     elif att in phone_columns:
-                        group_similar_String += """SIMILARITY(phone."{}"::text, '{}') AS score_{}_{}_{},""".format(master_att, row[att],att_group_info[att]['type'],att,master_att)
+                        group_similar_String += """SIMILARITY(phone."{}"::text, '{}') AS score_{}_{}_{},""".format(master_att, removeStringBlockers(row[att]),att_group_info[att]['type'],att,master_att)
                     elif att in email_columns:
                         if att_group_info[att]['process']=='email':
-                            group_similar_String += """SIMILARITY(REGEXP_REPLACE(email."{}"::text, '@.*', ''),REGEXP_REPLACE('{}', '@.*', '')) AS score_{}_{}_{},""".format(master_att, row[att],att)
+                            group_similar_String += """SIMILARITY(REGEXP_REPLACE(email."{}"::text, '@.*', ''),REGEXP_REPLACE('{}', '@.*', '')) AS score_{}_{}_{},""".format(master_att, removeStringBlockers(row[att]),att)
                         else:
-                            group_similar_String += """SIMILARITY(email."{}"::text, '{}') AS score_{}_{}_{},""".format(master_att, row[att],fuzzyAtt[i])
+                            group_similar_String += """SIMILARITY(email."{}"::text, '{}') AS score_{}_{}_{},""".format(master_att, removeStringBlockers(row[att]),fuzzyAtt[i])
     return group_similar_String,group_score_list
 
 def createFuzzyString(fuzzyAtt, fuzzyValue, customer_columns, address_columns, phone_columns, email_columns, Similarity_string, Addition_String, filter_fuzzy_att, filter_fuzzy_val, score_col_list):
@@ -333,13 +340,13 @@ def createFuzzyString(fuzzyAtt, fuzzyValue, customer_columns, address_columns, p
             filter_fuzzy_att.append(fuzzyAtt[i])
             filter_fuzzy_val.append(fuzzyValue[i])
             if fuzzyAtt[i] in customer_columns:
-                Similarity_string += """SIMILARITY(customer."{}"::text, '{}') AS score_{},""".format(fuzzyAtt[i], fuzzyValue[i],fuzzyAtt[i])
+                Similarity_string += """SIMILARITY(customer."{}"::text, '{}') AS score_{},""".format(fuzzyAtt[i], removeStringBlockers(fuzzyValue[i]),fuzzyAtt[i])
             elif fuzzyAtt[i] in address_columns:
-                Similarity_string += """SIMILARITY(address."{}"::text, '{}') AS score_{},""".format(fuzzyAtt[i], fuzzyValue[i],fuzzyAtt[i])
+                Similarity_string += """SIMILARITY(address."{}"::text, '{}') AS score_{},""".format(fuzzyAtt[i], removeStringBlockers(fuzzyValue[i]),fuzzyAtt[i])
             elif fuzzyAtt[i] in phone_columns:
-                Similarity_string += """SIMILARITY(phone."{}"::text, '{}') AS score_{},""".format(fuzzyAtt[i], fuzzyValue[i],fuzzyAtt[i])
+                Similarity_string += """SIMILARITY(phone."{}"::text, '{}') AS score_{},""".format(fuzzyAtt[i], removeStringBlockers(fuzzyValue[i]),fuzzyAtt[i])
             elif fuzzyAtt[i] in email_columns:
-                Similarity_string += """SIMILARITY(email."{}"::text, '{}') AS score_{},""".format(fuzzyAtt[i], fuzzyValue[i],fuzzyAtt[i])
+                Similarity_string += """SIMILARITY(email."{}"::text, '{}') AS score_{},""".format(fuzzyAtt[i], removeStringBlockers(fuzzyValue[i]),fuzzyAtt[i])
     return i,Similarity_string, Addition_String, filter_fuzzy_att, filter_fuzzy_val, score_col_list
 
 def createExactQuery(filter_col, filter_val, exact_String, group_exact_String, filter_table):
@@ -420,55 +427,56 @@ def createGroupExactString(att_group_info, group_exact, customer_columns, addres
         if att_group_info[str(att)]['label']=='phone':
             for master_att in master_phone_columns.split():
                 if row[att]!="":
-                    group_exact_String += """phone."{}"::text='{}' or """.format(master_att, row[att],att)
+                    group_exact_String += """phone."{}"::text='{}' or """.format(master_att, removeStringBlockers(row[att]),att)
         else:
             for master_att in att_group_info[att]['data']:
                 if att in customer_columns:
                     if type(row[att])==str:
                         if row[master_att]!="":
-                            group_exact_String += """customer."{}"::text='{}' or """.format(master_att, row[att],att)
+                            group_exact_String += """customer."{}"::text='{}' or """.format(master_att, removeStringBlockers(row[att]),att)
                 elif att in address_columns:
                     if type(row[master_att])==str:
                         if row[att]!="":
-                            group_exact_String += """address."{}"::text='{}' or """.format(master_att, row[att],att)
+                            group_exact_String += """address."{}"::text='{}' or """.format(master_att, removeStringBlockers(row[att]),att)
                 elif att in phone_columns:
                     if type(row[master_att])==str:
                         if row[att]!="":
-                            group_exact_String += """phone."{}"::text='{}' or """.format(master_att, row[att],att)
+                            group_exact_String += """phone."{}"::text='{}' or """.format(master_att, removeStringBlockers(row[att]),att)
                 elif att in email_columns:
                     if type(row[master_att])==str:
                         if row[att]!="":
                             if att_group_info[att]['process']=='email':
-                                group_exact_String += """REGEXP_REPLACE(email."{}"::text, '@.*', '')=REGEXP_REPLACE('{}', '@.*', '') or """.format(master_att, row[att],att)
+                                group_exact_String += """REGEXP_REPLACE(email."{}"::text, '@.*', '')=REGEXP_REPLACE('{}', '@.*', '') or """.format(master_att, removeStringBlockers(row[att]),att)
                             else:
-                                group_exact_String += """email."{}"::text='{}' or """.format(master_att, row[att],att)
+                                group_exact_String += """email."{}"::text='{}' or """.format(master_att, removeStringBlockers(row[att]),att)
     return group_exact_String
 
 def createExactstring(exactAtt, exactValue, customer_columns, address_columns, phone_columns, email_columns):
     exact_String = ''
     for i in range(len(exactAtt)):
+        
         if exactAtt[i] in customer_columns:
             if type(exactValue[i])==str:
                 if exactValue[i]!="":
-                    exact_String += """customer."{}"='{}' or """.format(exactAtt[i], exactValue[i],exactAtt[i])
+                    exact_String += """customer."{}"='{}' or """.format(exactAtt[i], removeStringBlockers(exactValue[i]),exactAtt[i])
             else:
                 exact_String += """customer."{}"={} or """.format(exactAtt[i], exactValue[i],exactAtt[i])
         elif exactAtt[i] in address_columns:
             if type(exactValue[i])==str:
                 if exactValue[i]!="":
-                    exact_String += """address."{}"='{}' or """.format(exactAtt[i], exactValue[i],exactAtt[i])
+                    exact_String += """address."{}"='{}' or """.format(exactAtt[i], removeStringBlockers(exactValue[i]),exactAtt[i])
             else:
                 exact_String += """email."{}"={} or """.format(exactAtt[i], exactValue[i], exactAtt[i])
         elif exactAtt[i] in phone_columns:
             if type(exactValue[i])==str:
                 if exactValue[i]!="":
-                    exact_String += """phone."{}"='{}' or """.format(exactAtt[i], exactValue[i],exactAtt[i])
+                    exact_String += """phone."{}"='{}' or """.format(exactAtt[i], removeStringBlockers(exactValue[i]),exactAtt[i])
             else:
                 exact_String += """phone."{}"={} or """.format(exactAtt[i], exactValue[i], exactAtt[i]) 
         elif exactAtt[i] in email_columns:
             if type(exactValue[i])==str:
                 if exactValue[i]!="":
-                    exact_String += """email."{}"='{}' or """.format(exactAtt[i], exactValue[i],exactAtt[i])
+                    exact_String += """email."{}"='{}' or """.format(exactAtt[i], removeStringBlockers(exactValue[i]),exactAtt[i])
             else:
                 exact_String += """email."{}"={} or """.format(exactAtt[i], exactValue[i], exactAtt[i])
     return exact_String
@@ -477,7 +485,7 @@ app = Flask(__name__)
 
 @app.route('/get_results', methods = ['POST'])
 def Run():
-    # request_data = pd.io.json.loads(request.data)
+    request_data = pd.io.json.loads(request.data)
     try:
         # request_data = eval(pd.io.json.loads(request.data))
         # data_df = pd.read_json(request_data)
@@ -501,19 +509,20 @@ def Run():
         if filter not in all_cols:
             filter = ''
         att_group_info = {}
-        for type in group.keys():
-            if group[type]['match-type']=='exact':
-                group_exact += group[type]['data']
-            elif group[type]['match-type']=='similar':
-                group_similar += group[type]['data']
-            for att in group[type]['data']:
-                att_group_info[str(att)] = {}
-                att_group_info[str(att)]['type'] = type
-                att_group_info[str(att)]['label'] = group[type]['label']
-                att_group_info[str(att)]['process'] = group[type]['process']
-                att_group_info[str(att)]['match-type'] = group[type]['match-type']
-                att_group_info[str(att)]['data'] = group[type]['data']
-            group_att = group_att + group[type]['data']
+        if group!=[]:
+            for type in group.keys():
+                if group[type]['match-type']=='exact':
+                    group_exact += group[type]['data']
+                elif group[type]['match-type']=='similar':
+                    group_similar += group[type]['data']
+                for att in group[type]['data']:
+                    att_group_info[str(att)] = {}
+                    att_group_info[str(att)]['type'] = type
+                    att_group_info[str(att)]['label'] = group[type]['label']
+                    att_group_info[str(att)]['process'] = group[type]['process']
+                    att_group_info[str(att)]['match-type'] = group[type]['match-type']
+                    att_group_info[str(att)]['data'] = group[type]['data']
+                group_att = group_att + group[type]['data']
         # group_exact = list(set.intersection(set(group_exact), set(all_cols)))
         # group_similar = list(set.intersection(set(group_similar), set(all_cols)))
         # group_att = list(set.intersection(set(group_att), set(all_cols)))

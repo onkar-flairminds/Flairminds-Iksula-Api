@@ -35,6 +35,7 @@ product_table = os.getenv("product_table")
 master_common_identifier = os.getenv("master_common_identifier")
 test_identifier = os.getenv("test_identifier")
 master_phone_columns = os.getenv("master_phone_columns")
+product_identifier = os.getenv("product_identifier")
 
 url = r"postgresql://{}:{}@{}:{}/{}".format(username,quote_plus(str(password)),host,port,database)
 print(url)
@@ -68,7 +69,7 @@ except Exception as e:
     print('Error : '+str(e))
 try:
     query = "Select * from {};".format(product_table)
-    # product = pd.read_sql(query,engine)
+    product = pd.read_sql(query,engine)
      #close the connection
 except Exception as e:
     print('Error : '+str(e))
@@ -168,22 +169,25 @@ def createGroupMatchingJson(att_group_info, group, group_similar, test_row, row,
                         group_matching[type].append(group_att)
     return pd.io.json.dumps(group_matching)
 
-def checkMatching(att_group_info, group, group_exact, group_similar,filter_col, filter_val, matching_id,exactAtt, exactValue, fuzzyAtt, fuzzyValue, customer_columns, address_columns, phone_columns, email_columns, row):
+def checkMatching(att_group_info, group, group_exact, group_similar,filter_col, filter_val, matching_id,exactAtt, exactValue, fuzzyAtt, fuzzyValue, customer_columns, address_columns, phone_columns, email_columns, row, mode='customer'):
     # url = r"postgresql://{}:{}@{}:{}/{}".format(username,quote_plus(password),host,port,database)
     if len(exactAtt)!=0 or len(group_exact)!=0:
-        exact_String = createExactstring(exactAtt, exactValue, customer_columns, address_columns, phone_columns, email_columns)
+        exact_String = createExactstring(exactAtt, exactValue, customer_columns, address_columns, phone_columns, email_columns, mode)
         group_exact_String = ''
-        group_exact_String = createGroupExactString(att_group_info, group_exact, customer_columns, address_columns, phone_columns, email_columns, row)
+        group_exact_String = createGroupExactString(att_group_info, group_exact, customer_columns, address_columns, phone_columns, email_columns, row, mode)
         exact_String = exact_String[:-4]
         if group_exact_String!='':
             group_exact_String = group_exact_String[:-4]
-        filter_table = returnFilterInfo(filter_col, customer_columns, address_columns, phone_columns, email_columns)
-        exact_Query = createExactQuery(filter_col, filter_val, exact_String, group_exact_String, filter_table)
+        filter_table = returnFilterInfo(filter_col, customer_columns, address_columns, phone_columns, email_columns, mode)
+        exact_Query = createExactQuery(filter_col, filter_val, exact_String, group_exact_String, filter_table, mode)
         if exact_String!='' or group_exact_String!='':
             exact_match = pd.read_sql(exact_Query,engine)
             if not exact_match.empty:
                 exact_match['matching_score'] = 1.0
-                Try = exact_match.loc[exact_match.groupby(f'{master_common_identifier}').matching_score.idxmax()]
+                if mode=='customer':
+                    Try = exact_match.loc[exact_match.groupby(f'{master_common_identifier}').matching_score.idxmax()]
+                elif mode=='product':
+                    Try = exact_match.loc[exact_match.groupby(product_identifier).matching_score.idxmax()]
                 exact_match = Try
                 exact_match['matching_id'] = matching_id
                 exact_match['matching_attributes'] = exact_match.apply(lambda x: createMatchingAttributesJson(exactAtt, exactValue, x, mode='exact'), axis = 1)
@@ -195,8 +199,8 @@ def checkMatching(att_group_info, group, group_exact, group_similar,filter_col, 
         filter_fuzzy_att = []
         filter_fuzzy_val = []
         score_col_list = []
-        i,Similarity_string, Addition_String, filter_fuzzy_att, filter_fuzzy_val, score_col_list = createFuzzyString(fuzzyAtt, fuzzyValue, customer_columns, address_columns, phone_columns, email_columns, Similarity_string, Addition_String, filter_fuzzy_att, filter_fuzzy_val, score_col_list)
-        group_similar_String, group_score_list = CreateGroupSimilarString(att_group_info, group_similar, fuzzyAtt, customer_columns, address_columns, phone_columns, email_columns, row, i)
+        i,Similarity_string, Addition_String, filter_fuzzy_att, filter_fuzzy_val, score_col_list = createFuzzyString(fuzzyAtt, fuzzyValue, customer_columns, address_columns, phone_columns, email_columns, Similarity_string, Addition_String, filter_fuzzy_att, filter_fuzzy_val, score_col_list, mode)
+        group_similar_String, group_score_list = CreateGroupSimilarString(att_group_info, group_similar, fuzzyAtt, customer_columns, address_columns, phone_columns, email_columns, row, i, mode)
         Similarity_string = Similarity_string[:-1]
         group_similar_String = group_similar_String[:-1]
         Addition_String  = Addition_String[:-3]
@@ -204,13 +208,16 @@ def checkMatching(att_group_info, group, group_exact, group_similar,filter_col, 
             Add_count = len(fuzzyAtt)+len(exactAtt)+len(group.keys())
         else:
             Add_count = len(fuzzyAtt)+len(exactAtt)
-        similar_Query = createSimilarQuery(filter_col, filter_val, Similarity_string, Addition_String, group_similar_String, Add_count)
+        similar_Query = createSimilarQuery(filter_col, filter_val, Similarity_string, Addition_String, group_similar_String, Add_count, mode)
         if Similarity_string!='' or group_similar_String!='':
             similar_match = pd.read_sql(similar_Query,engine)
             if similar_match.empty:
                 return pd.DataFrame()
             similar_match = similar_match.sort_values(by = 'matching_score', ascending = False)
-            Try = similar_match.loc[similar_match.groupby('CustTreeNodeID').matching_score.idxmax()]
+            if mode=='customer':
+                Try = similar_match.loc[similar_match.groupby(master_common_identifier).matching_score.idxmax()]
+            elif mode=='product':
+                Try = similar_match.loc[similar_match.groupby(product_identifier).matching_score.idxmax()]
             Try = Try.sort_values(by = 'matching_score', ascending = False)
             final = Try.iloc[:3]
             # squence_match = final.apply(lambda x : SequenceStringMatching(x, filter_fuzzy_att, Add_count, row), axis=1)
@@ -257,16 +264,20 @@ def SequenceStringMatching(result_row, filter_fuzzy_att, Add_count, test_row):
         score_addition+= seq_avg_Score
     result_row['matching_score'] = score_addition/Add_count
     return result_row
-def createSimilarQuery(filter_col, filter_val, Similarity_string, Addition_String, group_similar_String, Add_count):
+def createSimilarQuery(filter_col, filter_val, Similarity_string, Addition_String, group_similar_String, Add_count, mode):
+    if mode=='customer':
+        table_string = f"""{customer_table} as customer 
+                left join {email_table} as email using ("{master_common_identifier}")
+                left join {phone_table} as phone using ("{master_common_identifier}")
+                left join {address_table} as address using ("{master_common_identifier}")"""
+    elif mode=='product':
+        table_string = f"{product_table} as product"
     if filter_col == '':
         if group_similar_String=='':
             similar_Query = f"""
                 select * from ( select *, (({Addition_String})/{Add_count}) as matching_score from (select * ,
                 {Similarity_string}
-                from {customer_table} as customer
-                left join {email_table} as email using ("{master_common_identifier}")
-                left join {phone_table} as phone using ("{master_common_identifier}")
-                left join {address_table} as address using ("{master_common_identifier}")) as new_table
+                from {table_string} ) as new_table
                 order by matching_score desc ) as nTable
                 order by matching_score desc limit 200;
                 """
@@ -274,10 +285,7 @@ def createSimilarQuery(filter_col, filter_val, Similarity_string, Addition_Strin
             similar_Query = f"""
                 select * from (select *, (({Addition_String})/{Add_count}) as matching_score from (select * ,
                 {Similarity_string}, {group_similar_String}
-                from {customer_table} as customer
-                left join {email_table} as email using ("{master_common_identifier}")
-                left join {phone_table} as phone using ("{master_common_identifier}")
-                left join {address_table} as address using ("{master_common_identifier}")) as new_table
+                from {table_string} ) as new_table
                 order by matching_score desc ) as nTable
                 order by matching_score desc limit 200;
                 """
@@ -286,10 +294,7 @@ def createSimilarQuery(filter_col, filter_val, Similarity_string, Addition_Strin
             similar_Query = f"""
                 select * from (select *, (({Addition_String})/{Add_count}) as matching_score from (select * ,
                 {Similarity_string}
-                from {customer_table} as customer
-                left join {email_table} as email using ("{master_common_identifier}")
-                left join {phone_table} as phone using ("{master_common_identifier}")
-                left join {address_table} as address using ("{master_common_identifier}")) as new_table
+                from {table_string} ) as new_table
                 where "{filter_col}" = '{filter_val}'
                 order by matching_score desc ) as nTable
                 order by matching_score desc limit 200;
@@ -298,187 +303,197 @@ def createSimilarQuery(filter_col, filter_val, Similarity_string, Addition_Strin
             similar_Query = f"""
                 select * from (select *, (({Addition_String})/{Add_count}) as matching_score from (select * ,
                 {Similarity_string} , {group_similar_String}
-                from {customer_table} as customer
-                left join {email_table} as email using ("{master_common_identifier}")
-                left join {phone_table} as phone using ("{master_common_identifier}")
-                left join {address_table} as address using ("{master_common_identifier}")) as new_table
+                from {table_string} ) as new_table
                 where "{filter_col}" = '{filter_val}'
                 order by matching_score desc ) as nTable
                 order by matching_score desc limit 200;
                 """
     return similar_Query
 
-def CreateGroupSimilarString(att_group_info, group_similar, fuzzyAtt, customer_columns, address_columns, phone_columns, email_columns, row, i):
+def CreateGroupSimilarString(att_group_info, group_similar, fuzzyAtt, customer_columns, address_columns, phone_columns, email_columns, row, i, mode):
     group_similar_String = ''
     group_score_list = []
     for att in group_similar:
         if row[att]!="":
-            if att_group_info[str(att)]['label']=='phone':
-                for master_att in master_phone_columns.split():
-                    group_similar_String += """SIMILARITY(phone."{}"::text, '{}') AS score_{}_{}_{},""".format(master_att, removeStringBlockers(row[att]),att_group_info[att]['type'],att,master_att)
-            else:
+            if mode=='customer':
+                if att_group_info[str(att)]['label']=='phone':
+                    for master_att in master_phone_columns.split():
+                        group_similar_String += """SIMILARITY(phone."{}"::text, '{}') AS score_{}_{}_{},""".format(master_att, removeStringBlockers(row[att]),att_group_info[att]['type'],att,master_att)
+                else:
+                    for master_att in att_group_info[att]['data']:
+                        group_score_list.append('score_{}_{}_{}'.format(att_group_info[att]['type'].lower(),att.lower(),master_att.lower()))
+                        if att in customer_columns:
+                            group_similar_String += """SIMILARITY(customer."{}"::text, '{}') AS score_{}_{}_{},""".format(master_att, removeStringBlockers(row[att]), att_group_info[att]['type'],att,master_att)
+                        elif att in address_columns:
+                            group_similar_String += """SIMILARITY(address."{}"::text, '{}') AS score_{}_{}_{},""".format(master_att, removeStringBlockers(row[att]),att_group_info[att]['type'],att,master_att)
+                        elif att in phone_columns:
+                            group_similar_String += """SIMILARITY(phone."{}"::text, '{}') AS score_{}_{}_{},""".format(master_att, removeStringBlockers(row[att]),att_group_info[att]['type'],att,master_att)
+                        elif att in email_columns:
+                            if att_group_info[att]['process']=='email':
+                                group_similar_String += """SIMILARITY(REGEXP_REPLACE(email."{}"::text, '@.*', ''),REGEXP_REPLACE('{}', '@.*', '')) AS score_{}_{}_{},""".format(master_att, removeStringBlockers(row[att]),att)
+                            else:
+                                group_similar_String += """SIMILARITY(email."{}"::text, '{}') AS score_{}_{}_{},""".format(master_att, removeStringBlockers(row[att]),fuzzyAtt[i])
+            elif mode=='product':
                 for master_att in att_group_info[att]['data']:
                     group_score_list.append('score_{}_{}_{}'.format(att_group_info[att]['type'].lower(),att.lower(),master_att.lower()))
-                    if att in customer_columns:
-                        group_similar_String += """SIMILARITY(customer."{}"::text, '{}') AS score_{}_{}_{},""".format(master_att, removeStringBlockers(row[att]), att_group_info[att]['type'],att,master_att)
-                    elif att in address_columns:
-                        group_similar_String += """SIMILARITY(address."{}"::text, '{}') AS score_{}_{}_{},""".format(master_att, removeStringBlockers(row[att]),att_group_info[att]['type'],att,master_att)
-                    elif att in phone_columns:
-                        group_similar_String += """SIMILARITY(phone."{}"::text, '{}') AS score_{}_{}_{},""".format(master_att, removeStringBlockers(row[att]),att_group_info[att]['type'],att,master_att)
-                    elif att in email_columns:
-                        if att_group_info[att]['process']=='email':
-                            group_similar_String += """SIMILARITY(REGEXP_REPLACE(email."{}"::text, '@.*', ''),REGEXP_REPLACE('{}', '@.*', '')) AS score_{}_{}_{},""".format(master_att, removeStringBlockers(row[att]),att)
-                        else:
-                            group_similar_String += """SIMILARITY(email."{}"::text, '{}') AS score_{}_{}_{},""".format(master_att, removeStringBlockers(row[att]),fuzzyAtt[i])
+                    group_similar_String += """SIMILARITY(product."{}"::text, '{}') AS score_{}_{}_{},""".format(master_att, removeStringBlockers(row[att]), att_group_info[att]['type'],att,master_att)
     return group_similar_String,group_score_list
 
-def createFuzzyString(fuzzyAtt, fuzzyValue, customer_columns, address_columns, phone_columns, email_columns, Similarity_string, Addition_String, filter_fuzzy_att, filter_fuzzy_val, score_col_list):
+def createFuzzyString(fuzzyAtt, fuzzyValue, customer_columns, address_columns, phone_columns, email_columns, Similarity_string, Addition_String, filter_fuzzy_att, filter_fuzzy_val, score_col_list, mode):
     for i in range(len(fuzzyAtt)):
         if fuzzyValue[i]!="":
             score_col_list.append('score_{}'.format(str(fuzzyAtt[i]).lower()))
             Addition_String+= 'score_{} + '.format(fuzzyAtt[i])
             filter_fuzzy_att.append(fuzzyAtt[i])
             filter_fuzzy_val.append(fuzzyValue[i])
-            if fuzzyAtt[i] in customer_columns:
-                Similarity_string += """SIMILARITY(customer."{}"::text, '{}') AS score_{},""".format(fuzzyAtt[i], removeStringBlockers(fuzzyValue[i]),fuzzyAtt[i])
-            elif fuzzyAtt[i] in address_columns:
-                Similarity_string += """SIMILARITY(address."{}"::text, '{}') AS score_{},""".format(fuzzyAtt[i], removeStringBlockers(fuzzyValue[i]),fuzzyAtt[i])
-            elif fuzzyAtt[i] in phone_columns:
-                Similarity_string += """SIMILARITY(phone."{}"::text, '{}') AS score_{},""".format(fuzzyAtt[i], removeStringBlockers(fuzzyValue[i]),fuzzyAtt[i])
-            elif fuzzyAtt[i] in email_columns:
-                Similarity_string += """SIMILARITY(email."{}"::text, '{}') AS score_{},""".format(fuzzyAtt[i], removeStringBlockers(fuzzyValue[i]),fuzzyAtt[i])
+            if mode=='customer':
+                if fuzzyAtt[i] in customer_columns:
+                    Similarity_string += """SIMILARITY(customer."{}"::text, '{}') AS score_{},""".format(fuzzyAtt[i], removeStringBlockers(fuzzyValue[i]),fuzzyAtt[i])
+                elif fuzzyAtt[i] in address_columns:
+                    Similarity_string += """SIMILARITY(address."{}"::text, '{}') AS score_{},""".format(fuzzyAtt[i], removeStringBlockers(fuzzyValue[i]),fuzzyAtt[i])
+                elif fuzzyAtt[i] in phone_columns:
+                    Similarity_string += """SIMILARITY(phone."{}"::text, '{}') AS score_{},""".format(fuzzyAtt[i], removeStringBlockers(fuzzyValue[i]),fuzzyAtt[i])
+                elif fuzzyAtt[i] in email_columns:
+                    Similarity_string += """SIMILARITY(email."{}"::text, '{}') AS score_{},""".format(fuzzyAtt[i], removeStringBlockers(fuzzyValue[i]),fuzzyAtt[i])
+            elif mode=='product':
+                Similarity_string += """SIMILARITY(product."{}"::text, '{}') AS score_{},""".format(fuzzyAtt[i], removeStringBlockers(fuzzyValue[i]),fuzzyAtt[i])
     return i,Similarity_string, Addition_String, filter_fuzzy_att, filter_fuzzy_val, score_col_list
 
-def createExactQuery(filter_col, filter_val, exact_String, group_exact_String, filter_table):
+def createExactQuery(filter_col, filter_val, exact_String, group_exact_String, filter_table, mode):
+    if mode=='customer':
+        table_string = f"""{customer_table} as customer 
+                left join {email_table} as email using ("{master_common_identifier}")
+                left join {phone_table} as phone using ("{master_common_identifier}")
+                left join {address_table} as address using ("{master_common_identifier}")"""
+    elif mode=='product':
+        table_string = f"{product_table} as product"
     if filter_col == '' or filter_table=='':
         if group_exact_String=='':
             exact_Query = f"""
                 select *
-                from {customer_table} as customer 
-                left join {email_table} as email using ("{master_common_identifier}")
-                left join {phone_table} as phone using ("{master_common_identifier}")
-                left join {address_table} as address using ("{master_common_identifier}")
+                from {table_string} 
                 where {exact_String};
                 """
         else:
             exact_Query = f"""
                 select *
-                from {customer_table} as customer 
-                left join {email_table} as email using ("{master_common_identifier}")
-                left join {phone_table} as phone using ("{master_common_identifier}")
-                left join {address_table} as address using ("{master_common_identifier}")
+                from {table_string} 
                 where {exact_String} or {group_exact_String};
                 """
     else:
         if group_exact_String=='':
             exact_Query = f"""
                 select *
-                from {customer_table} as customer 
-                left join {email_table} as email using ("{master_common_identifier}")
-                left join {phone_table} as phone using ("{master_common_identifier}")
-                left join {address_table} as address using ("{master_common_identifier}")
+                from {table_string}
                 where ({exact_String}) and {filter_table}."{filter_col}" = '{filter_val}';
                 """
         else:
             exact_Query = f"""
                 select *
-                from {customer_table} as customer 
-                left join {email_table} as email using ("{master_common_identifier}")
-                left join {phone_table} as phone using ("{master_common_identifier}")
-                left join {address_table} as address using ("{master_common_identifier}")
+                from {table_string}
                 where ({exact_String} or {group_exact_String}) and {filter_table}."{filter_col}" = '{filter_val}';
                 """
     if exact_String=='' and group_exact_String!='':
         if filter_col == '' or filter_table=='':
             exact_Query = f"""
                 select *
-                from {customer_table} as customer 
-                left join {email_table} as email using ("{master_common_identifier}")
-                left join {phone_table} as phone using ("{master_common_identifier}")
-                left join {address_table} as address using ("{master_common_identifier}")
+                from {table_string}
                 where ({group_exact_String}) ;
                 """
         else:
             exact_Query = f"""
                     select *
-                    from {customer_table} as customer 
-                    left join {email_table} as email using ("{master_common_identifier}")
-                    left join {phone_table} as phone using ("{master_common_identifier}")
-                    left join {address_table} as address using ("{master_common_identifier}")
+                    from {table_string}
                     where ({group_exact_String}) and {filter_table}."{filter_col}" = '{filter_val}';
                     """         
     return exact_Query
 
-def returnFilterInfo(filter_col, customer_columns, address_columns, phone_columns, email_columns):
+def returnFilterInfo(filter_col, customer_columns, address_columns, phone_columns, email_columns, mode):
     filter_table = ''
-    if filter_col in customer_columns:
-        filter_table = "customer"
-    elif filter_col in phone_columns:
-        filter_table = "phone"
-    elif filter_col in email_columns:
-        filter_table = "email"
-    elif filter_col in address_columns:
-        filter_table = "address"
+    if mode=='customer':
+        if filter_col in customer_columns:
+            filter_table = "customer"
+        elif filter_col in phone_columns:
+            filter_table = "phone"
+        elif filter_col in email_columns:
+            filter_table = "email"
+        elif filter_col in address_columns:
+            filter_table = "address"
+    elif mode=='product':
+        filter_table = "product"
     return filter_table
 
-def createGroupExactString(att_group_info, group_exact, customer_columns, address_columns, phone_columns, email_columns, row):
+def createGroupExactString(att_group_info, group_exact, customer_columns, address_columns, phone_columns, email_columns, row, mode):
     group_exact_String = ''
     for att in group_exact:
-        if att_group_info[str(att)]['label']=='phone':
-            for master_att in master_phone_columns.split():
-                if row[att]!="":
-                    group_exact_String += """phone."{}"::text='{}' or """.format(master_att, removeStringBlockers(row[att]),att)
-        else:
+        if mode=='customer':
+            if att_group_info[str(att)]['label']=='phone':
+                for master_att in master_phone_columns.split():
+                    if row[att]!="":
+                        group_exact_String += """phone."{}"::text='{}' or """.format(master_att, removeStringBlockers(row[att]),att)
+            else:
+                for master_att in att_group_info[att]['data']:
+                    if att in customer_columns:
+                        if type(row[att])==str:
+                            if row[master_att]!="":
+                                group_exact_String += """customer."{}"::text='{}' or """.format(master_att, removeStringBlockers(row[att]),att)
+                    elif att in address_columns:
+                        if type(row[master_att])==str:
+                            if row[att]!="":
+                                group_exact_String += """address."{}"::text='{}' or """.format(master_att, removeStringBlockers(row[att]),att)
+                    elif att in phone_columns:
+                        if type(row[master_att])==str:
+                            if row[att]!="":
+                                group_exact_String += """phone."{}"::text='{}' or """.format(master_att, removeStringBlockers(row[att]),att)
+                    elif att in email_columns:
+                        if type(row[master_att])==str:
+                            if row[att]!="":
+                                if att_group_info[att]['process']=='email':
+                                    group_exact_String += """REGEXP_REPLACE(email."{}"::text, '@.*', '')=REGEXP_REPLACE('{}', '@.*', '') or """.format(master_att, removeStringBlockers(row[att]),att)
+                                else:
+                                    group_exact_String += """email."{}"::text='{}' or """.format(master_att, removeStringBlockers(row[att]),att)
+        elif mode=='product':
             for master_att in att_group_info[att]['data']:
-                if att in customer_columns:
                     if type(row[att])==str:
                         if row[master_att]!="":
-                            group_exact_String += """customer."{}"::text='{}' or """.format(master_att, removeStringBlockers(row[att]),att)
-                elif att in address_columns:
-                    if type(row[master_att])==str:
-                        if row[att]!="":
-                            group_exact_String += """address."{}"::text='{}' or """.format(master_att, removeStringBlockers(row[att]),att)
-                elif att in phone_columns:
-                    if type(row[master_att])==str:
-                        if row[att]!="":
-                            group_exact_String += """phone."{}"::text='{}' or """.format(master_att, removeStringBlockers(row[att]),att)
-                elif att in email_columns:
-                    if type(row[master_att])==str:
-                        if row[att]!="":
-                            if att_group_info[att]['process']=='email':
-                                group_exact_String += """REGEXP_REPLACE(email."{}"::text, '@.*', '')=REGEXP_REPLACE('{}', '@.*', '') or """.format(master_att, removeStringBlockers(row[att]),att)
-                            else:
-                                group_exact_String += """email."{}"::text='{}' or """.format(master_att, removeStringBlockers(row[att]),att)
+                            group_exact_String += """product."{}"::text='{}' or """.format(master_att, removeStringBlockers(row[att]),att)
     return group_exact_String
 
-def createExactstring(exactAtt, exactValue, customer_columns, address_columns, phone_columns, email_columns):
+def createExactstring(exactAtt, exactValue, customer_columns, address_columns, phone_columns, email_columns, mode):
     exact_String = ''
     for i in range(len(exactAtt)):
-        
-        if exactAtt[i] in customer_columns:
+        if mode=='customer':
+            if exactAtt[i] in customer_columns:
+                if type(exactValue[i])==str:
+                    if exactValue[i]!="":
+                        exact_String += """customer."{}"='{}' or """.format(exactAtt[i], removeStringBlockers(exactValue[i]),exactAtt[i])
+                else:
+                    exact_String += """customer."{}"={} or """.format(exactAtt[i], exactValue[i],exactAtt[i])
+            elif exactAtt[i] in address_columns:
+                if type(exactValue[i])==str:
+                    if exactValue[i]!="":
+                        exact_String += """address."{}"='{}' or """.format(exactAtt[i], removeStringBlockers(exactValue[i]),exactAtt[i])
+                else:
+                    exact_String += """email."{}"={} or """.format(exactAtt[i], exactValue[i], exactAtt[i])
+            elif exactAtt[i] in phone_columns:
+                if type(exactValue[i])==str:
+                    if exactValue[i]!="":
+                        exact_String += """phone."{}"='{}' or """.format(exactAtt[i], removeStringBlockers(exactValue[i]),exactAtt[i])
+                else:
+                    exact_String += """phone."{}"={} or """.format(exactAtt[i], exactValue[i], exactAtt[i]) 
+            elif exactAtt[i] in email_columns:
+                if type(exactValue[i])==str:
+                    if exactValue[i]!="":
+                        exact_String += """email."{}"='{}' or """.format(exactAtt[i], removeStringBlockers(exactValue[i]),exactAtt[i])
+                else:
+                    exact_String += """email."{}"={} or """.format(exactAtt[i], exactValue[i], exactAtt[i])
+        elif mode=='product':
             if type(exactValue[i])==str:
                 if exactValue[i]!="":
-                    exact_String += """customer."{}"='{}' or """.format(exactAtt[i], removeStringBlockers(exactValue[i]),exactAtt[i])
+                    exact_String += """product."{}"='{}' or """.format(exactAtt[i], removeStringBlockers(exactValue[i]),exactAtt[i])
             else:
-                exact_String += """customer."{}"={} or """.format(exactAtt[i], exactValue[i],exactAtt[i])
-        elif exactAtt[i] in address_columns:
-            if type(exactValue[i])==str:
-                if exactValue[i]!="":
-                    exact_String += """address."{}"='{}' or """.format(exactAtt[i], removeStringBlockers(exactValue[i]),exactAtt[i])
-            else:
-                exact_String += """email."{}"={} or """.format(exactAtt[i], exactValue[i], exactAtt[i])
-        elif exactAtt[i] in phone_columns:
-            if type(exactValue[i])==str:
-                if exactValue[i]!="":
-                    exact_String += """phone."{}"='{}' or """.format(exactAtt[i], removeStringBlockers(exactValue[i]),exactAtt[i])
-            else:
-                exact_String += """phone."{}"={} or """.format(exactAtt[i], exactValue[i], exactAtt[i]) 
-        elif exactAtt[i] in email_columns:
-            if type(exactValue[i])==str:
-                if exactValue[i]!="":
-                    exact_String += """email."{}"='{}' or """.format(exactAtt[i], removeStringBlockers(exactValue[i]),exactAtt[i])
-            else:
-                exact_String += """email."{}"={} or """.format(exactAtt[i], exactValue[i], exactAtt[i])
+                exact_String += """product."{}"={} or """.format(exactAtt[i], exactValue[i],exactAtt[i])
+
     return exact_String
 
 app = Flask(__name__)
@@ -541,6 +556,7 @@ def Run():
             # similar_exact = []
             # phone_fields = ['phone1', 'phone2', 'PhoneNumber']
             Attributes = list(set(exactAtt + fuzzyAtt+ group_att))
+            
             exactAtt = [att for att in set.intersection(set(all_cols),set(exactAtt))]
             fuzzyAtt = [att for att in set.intersection(set(all_cols),set(fuzzyAtt))]
             prod_pid = test
@@ -557,8 +573,18 @@ def Run():
             'product_width_in','series_collection','product_diameter_in','california_title_20_compliant','shade_fitter_type','shade_color_family',
             'lighting_product_type','certifications_and_listings', 'fixture_color_finish_family', 'lamp_shade_material']
             # similar_exact = []
-            phone_fields = []
             Attributes = exactAtt + fuzzyAtt
+            product_cols = list(product.columns)
+            exactAtt = [att for att in set.intersection(set(product_cols),set(exactAtt))]
+            fuzzyAtt = [att for att in set.intersection(set(product_cols),set(fuzzyAtt))]
+            prod_pid = test
+            
+            if filter!='':
+                prod_pid['df'] = prod_pid.apply(lambda x : checkMatching(att_group_info,group,group_exact,group_similar, filter, x[filter], x[test_identifier], exactAtt, list(x[exactAtt]), fuzzyAtt, list(x[fuzzyAtt]), list(customer.columns), list(address.columns), list(phone.columns), list(email.columns),x, mode='product')
+                            , axis = 1)
+            else:
+                prod_pid['df'] = prod_pid.apply(lambda x : checkMatching(att_group_info,group,group_exact,group_similar,filter, '', x[test_identifier], exactAtt, list(x[exactAtt]), fuzzyAtt, list(x[fuzzyAtt]), list(customer.columns), list(address.columns), list(phone.columns), list(email.columns),x, mode='product')
+                            , axis = 1)
         Dataframe = pd.DataFrame()
         for i in range(len(prod_pid)):
             prod_row = prod_pid.iloc[i]

@@ -44,32 +44,32 @@ engine = create_engine(url, pool_size=50, echo=False)
 
 
 try:
-    query = "SELECT * FROM {};".format(customer_table)
+    query = "SELECT * FROM information_schema.columns WHERE table_schema = 'public' AND table_name = '{}';".format(customer_table)
     customer = pd.read_sql(query,engine)
-    Cust = customer.copy(deep=True)
+    # Cust = customer.copy(deep=True)
      #close the connection
 except Exception as e:
     print('Error : '+str(e))
 try:
-    query = "SELECT * FROM {};".format(address_table)
+    query = "SELECT * FROM information_schema.columns WHERE table_schema = 'public' AND table_name = '{}';".format(address_table)
     address = pd.read_sql(query,engine)
     #close the connection
 except Exception as e:
     print('Error : '+str(e))
 try:
-    query = "SELECT * FROM {};".format(email_table)
+    query = "SELECT * FROM information_schema.columns WHERE table_schema = 'public' AND table_name = '{}';".format(email_table)
     email = pd.read_sql(query,engine)
      #close the connection
 except Exception as e:
     print('Error : '+str(e))
 try:
-    query = "SELECT * FROM {};".format(phone_table)
+    query = "SELECT * FROM information_schema.columns WHERE table_schema = 'public' AND table_name = '{}';".format(phone_table)
     phone = pd.read_sql(query,engine)
      #close the connection
 except Exception as e:
     print('Error : '+str(e))
 try:
-    query = "Select * from {};".format(product_table)
+    query = "SELECT * FROM information_schema.columns WHERE table_schema = 'public' AND table_name = '{}';".format(product_table)
     product = pd.read_sql(query,engine)
      #close the connection
 except Exception as e:
@@ -273,36 +273,36 @@ def createSimilarQuery(filter_col, filter_val, Similarity_string, Addition_Strin
     if filter_col == '':
         if group_similar_String=='':
             similar_Query = f"""
-                select *, (({Addition_String})/{Add_count}) as matching_score from ( select *,{Similarity_string} from (select *
+                select * from (select *, (({Addition_String})/{Add_count}) as matching_score from ( select *,{Similarity_string} from (select *
                 from {table_string} ) as new_table
                 ) as nTable
+                order by matching_score desc) as s_table
                 order by matching_score desc limit 200;
                 """
         else:
             similar_Query = f"""
-                select *, (({Addition_String})/{Add_count}) as matching_score from (select *,{Similarity_string} from (select * ,
-                {group_similar_String}
+                select * from (select *, (({Addition_String})/{Add_count}) as matching_score from (select *,{Similarity_string},{group_similar_String} from (select * ,
                 from {table_string} ) as new_table
                  ) as nTable
+                order by matching_score desc) as s_table
                 order by matching_score desc limit 200;
                 """
     else:
         if group_similar_String=='':
             similar_Query = f"""
-                select *, (({Addition_String})/{Add_count}) as matching_score from (select *,{Similarity_string} from (select * 
-                from {table_string} ) as new_table
-                where "{filter_col}" = '{filter_val}'
+                select * from (select *, (({Addition_String})/{Add_count}) as matching_score from (select *,{Similarity_string} from (select * 
+                from {table_string} where "{filter_col}" = '{filter_val}') as new_table
                 ) as nTable
+                order by matching_score desc) as s_table
                 order by matching_score desc limit 200;
                 """
         else:
             similar_Query = f"""
-                select *, (({Addition_String})/{Add_count}) as matching_score from (select *,{Similarity_string} from (select * ,
-                {group_similar_String}
-                from {table_string} ) as new_table
-                where "{filter_col}" = '{filter_val}'
+                select * from (select *, (({Addition_String})/{Add_count}) as matching_score from (select *,{Similarity_string},{group_similar_String} from (select *
+                from {table_string} where "{filter_col}" = '{filter_val}') as new_table
                 ) as nTable
-                order by matching_score desc limit 200;
+                order by matching_score desc) as s_table
+                order by matching_score desc  limit 200;
                 """
     return similar_Query
 
@@ -461,11 +461,7 @@ def Run():
         request_data = request.json
         test = pd.io.json.json_normalize(request_data['data'])
         filter = request_data['filter']
-        
-        # if filter!='':
-        #     Customer_Merged = checkForFilterandMerge(customer, email, address, phone, filter)
-        # else:
-        #     Customer_Merged = Cust
+
         exactAtt = request_data['exact']
         fuzzyAtt = request_data['similar']
         exactAtt = [att for att in set.intersection(set(test.columns),set(exactAtt))]
@@ -474,7 +470,7 @@ def Run():
         group_att = []
         group_exact = []
         group_similar = []
-        all_cols = list(set(list(customer.columns)+list(address.columns)+list(phone.columns)+list(email.columns)))
+        all_cols = list(set(list(customer['column_name'])+list(address['column_name'])+list(phone['column_name'])+list(email['column_name'])))
         if filter not in all_cols:
             filter = ''
         att_group_info = {}
@@ -516,10 +512,10 @@ def Run():
             prod_pid = test
             
             if filter!='':
-                prod_pid['df'] = prod_pid.apply(lambda x : checkMatching(att_group_info,group,group_exact,group_similar, filter, x[filter], x[test_identifier], exactAtt, list(x[exactAtt]), fuzzyAtt, list(x[fuzzyAtt]), list(customer.columns), list(address.columns), list(phone.columns), list(email.columns),x)
+                prod_pid['df'] = prod_pid.apply(lambda x : checkMatching(att_group_info,group,group_exact,group_similar, filter, x[filter], x[test_identifier], exactAtt, list(x[exactAtt]), fuzzyAtt, list(x[fuzzyAtt]), list(customer['column_name']), list(address['column_name']), list(phone['column_name']), list(email['column_name']),x)
                             , axis = 1)
             else:
-                prod_pid['df'] = prod_pid.apply(lambda x : checkMatching(att_group_info,group,group_exact,group_similar,filter, '', x[test_identifier], exactAtt, list(x[exactAtt]), fuzzyAtt, list(x[fuzzyAtt]), list(customer.columns), list(address.columns), list(phone.columns), list(email.columns),x)
+                prod_pid['df'] = prod_pid.apply(lambda x : checkMatching(att_group_info,group,group_exact,group_similar,filter, '', x[test_identifier], exactAtt, list(x[exactAtt]), fuzzyAtt, list(x[fuzzyAtt]), list(customer['column_name']), list(address['column_name']), list(phone['column_name']), list(email['column_name']),x)
                             , axis = 1)
         elif test['data_type'].iloc[0]=='product':
             similar_exact = ['parent_leaf_guid', 'mfg_brand_name', 'price', 'parts_accessories_type', 'product_length_in','manufacturer_warranty',
@@ -528,16 +524,16 @@ def Run():
             'lighting_product_type','certifications_and_listings', 'fixture_color_finish_family', 'lamp_shade_material']
             # similar_exact = []
             Attributes = exactAtt + fuzzyAtt
-            product_cols = list(product.columns)
+            product_cols = list(product['column_name'])
             exactAtt = [att for att in set.intersection(set(product_cols),set(exactAtt))]
             fuzzyAtt = [att for att in set.intersection(set(product_cols),set(fuzzyAtt))]
             prod_pid = test
             
             if filter!='':
-                prod_pid['df'] = prod_pid.apply(lambda x : checkMatching(att_group_info,group,group_exact,group_similar, filter, x[filter], x[test_identifier], exactAtt, list(x[exactAtt]), fuzzyAtt, list(x[fuzzyAtt]), list(customer.columns), list(address.columns), list(phone.columns), list(email.columns),x, mode='product')
+                prod_pid['df'] = prod_pid.apply(lambda x : checkMatching(att_group_info,group,group_exact,group_similar, filter, x[filter], x[test_identifier], exactAtt, list(x[exactAtt]), fuzzyAtt, list(x[fuzzyAtt]), list(customer['column_name']), list(address['column_name']), list(phone['column_name']), list(email['column_name']),x, mode='product')
                             , axis = 1)
             else:
-                prod_pid['df'] = prod_pid.apply(lambda x : checkMatching(att_group_info,group,group_exact,group_similar,filter, '', x[test_identifier], exactAtt, list(x[exactAtt]), fuzzyAtt, list(x[fuzzyAtt]), list(customer.columns), list(address.columns), list(phone.columns), list(email.columns),x, mode='product')
+                prod_pid['df'] = prod_pid.apply(lambda x : checkMatching(att_group_info,group,group_exact,group_similar,filter, '', x[test_identifier], exactAtt, list(x[exactAtt]), fuzzyAtt, list(x[fuzzyAtt]), list(customer['column_name']), list(address['column_name']), list(phone['column_name']), list(email['column_name']),x, mode='product')
                             , axis = 1)
         Dataframe = pd.DataFrame()
         for i in range(len(prod_pid)):

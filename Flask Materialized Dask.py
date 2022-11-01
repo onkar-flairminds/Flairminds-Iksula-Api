@@ -3,6 +3,8 @@ from tkinter import scrolledtext
 from typing import Dict
 import numpy as np
 import pandas as pd
+import dask.dataframe as dd
+from dask.multiprocessing import get
 import numpy as np
 import datetime
 import re
@@ -273,35 +275,37 @@ def createSimilarQuery(filter_col, filter_val, Similarity_string, Addition_Strin
     if filter_col == '':
         if group_similar_String=='':
             similar_Query = f"""
-                select *, (({Addition_String})/{Add_count}) as matching_score from ( select *,{Similarity_string} from (select *
+                select * from ( select *, (({Addition_String})/{Add_count}) as matching_score from (select * ,
+                {Similarity_string}
                 from {table_string} ) as new_table
-                ) as nTable
+                order by matching_score desc ) as nTable
                 order by matching_score desc limit 200;
                 """
         else:
             similar_Query = f"""
-                select *, (({Addition_String})/{Add_count}) as matching_score from (select *,{Similarity_string} from (select * ,
-                {group_similar_String}
+                select * from (select *, (({Addition_String})/{Add_count}) as matching_score from (select * ,
+                {Similarity_string}, {group_similar_String}
                 from {table_string} ) as new_table
-                 ) as nTable
+                order by matching_score desc ) as nTable
                 order by matching_score desc limit 200;
                 """
     else:
         if group_similar_String=='':
             similar_Query = f"""
-                select *, (({Addition_String})/{Add_count}) as matching_score from (select *,{Similarity_string} from (select * 
+                select * from (select *, (({Addition_String})/{Add_count}) as matching_score from (select * ,
+                {Similarity_string}
                 from {table_string} ) as new_table
                 where "{filter_col}" = '{filter_val}'
-                ) as nTable
+                order by matching_score desc ) as nTable
                 order by matching_score desc limit 200;
                 """
         else:
             similar_Query = f"""
-                select *, (({Addition_String})/{Add_count}) as matching_score from (select *,{Similarity_string} from (select * ,
-                {group_similar_String}
+                select * from (select *, (({Addition_String})/{Add_count}) as matching_score from (select * ,
+                {Similarity_string} , {group_similar_String}
                 from {table_string} ) as new_table
                 where "{filter_col}" = '{filter_val}'
-                ) as nTable
+                order by matching_score desc ) as nTable
                 order by matching_score desc limit 200;
                 """
     return similar_Query
@@ -460,6 +464,7 @@ def Run():
         # data_df = pd.read_json(request_data)
         request_data = request.json
         test = pd.io.json.json_normalize(request_data['data'])
+        ddata = dd.read_json(request_data['data'])
         filter = request_data['filter']
         
         # if filter!='':
@@ -516,11 +521,15 @@ def Run():
             prod_pid = test
             
             if filter!='':
-                prod_pid['df'] = prod_pid.apply(lambda x : checkMatching(att_group_info,group,group_exact,group_similar, filter, x[filter], x[test_identifier], exactAtt, list(x[exactAtt]), fuzzyAtt, list(x[fuzzyAtt]), list(customer.columns), list(address.columns), list(phone.columns), list(email.columns),x)
-                            , axis = 1)
+                # prod_pid['df'] = prod_pid.apply(lambda x : checkMatching(att_group_info,group,group_exact,group_similar, filter, x[filter], x[test_identifier], exactAtt, list(x[exactAtt]), fuzzyAtt, list(x[fuzzyAtt]), list(customer.columns), list(address.columns), list(phone.columns), list(email.columns),x)
+                #             , axis = 1)
+                ddata['df'] = ddata.map_partitions(lambda df: df.apply(lambda x : checkMatching(att_group_info,group,group_exact,group_similar, filter, x[filter], x[test_identifier], exactAtt, list(x[exactAtt]), fuzzyAtt, list(x[fuzzyAtt]), list(customer.columns), list(address.columns), list(phone.columns), list(email.columns),x)
+                            , axis = 1)).compute(scheduler='threads')
             else:
-                prod_pid['df'] = prod_pid.apply(lambda x : checkMatching(att_group_info,group,group_exact,group_similar,filter, '', x[test_identifier], exactAtt, list(x[exactAtt]), fuzzyAtt, list(x[fuzzyAtt]), list(customer.columns), list(address.columns), list(phone.columns), list(email.columns),x)
-                            , axis = 1)
+                # prod_pid['df'] = prod_pid.apply(lambda x : checkMatching(att_group_info,group,group_exact,group_similar,filter, '', x[test_identifier], exactAtt, list(x[exactAtt]), fuzzyAtt, list(x[fuzzyAtt]), list(customer.columns), list(address.columns), list(phone.columns), list(email.columns),x)
+                #             , axis = 1)
+                ddata['df'] = ddata.map_partitions(lambda df: df.apply(lambda x : checkMatching(att_group_info,group,group_exact,group_similar,filter, '', x[test_identifier], exactAtt, list(x[exactAtt]), fuzzyAtt, list(x[fuzzyAtt]), list(customer.columns), list(address.columns), list(phone.columns), list(email.columns),x)
+                            , axis = 1)).compute(scheduler='threads')
         elif test['data_type'].iloc[0]=='product':
             similar_exact = ['parent_leaf_guid', 'mfg_brand_name', 'price', 'parts_accessories_type', 'product_length_in','manufacturer_warranty',
             'downrod_length_in', 'material','product_height_in','product_depth_in','housing_color_family', 'color_finish', 'product_weight_lb',
@@ -532,7 +541,7 @@ def Run():
             exactAtt = [att for att in set.intersection(set(product_cols),set(exactAtt))]
             fuzzyAtt = [att for att in set.intersection(set(product_cols),set(fuzzyAtt))]
             prod_pid = test
-            
+
             if filter!='':
                 prod_pid['df'] = prod_pid.apply(lambda x : checkMatching(att_group_info,group,group_exact,group_similar, filter, x[filter], x[test_identifier], exactAtt, list(x[exactAtt]), fuzzyAtt, list(x[fuzzyAtt]), list(customer.columns), list(address.columns), list(phone.columns), list(email.columns),x, mode='product')
                             , axis = 1)

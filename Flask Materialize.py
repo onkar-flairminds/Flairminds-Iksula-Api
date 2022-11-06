@@ -82,6 +82,7 @@ def removeStringBlockers(string):
     return re.sub(r'''[',"]''', '', str(string))
 
 def createMatchingAttributesJson(att_list, current_val_list, row, mode='similar'):
+    """ Creates a json for matching attributes """
     matching_attributes = {}
     for i in range(len(att_list)):
         att_dict = {}

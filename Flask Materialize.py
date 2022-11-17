@@ -4,7 +4,7 @@ from typing import Dict
 import numpy as np
 import pandas as pd
 import numpy as np
-import datetime
+import time
 import re
 import os
 from difflib import SequenceMatcher
@@ -171,7 +171,13 @@ def createGroupMatchingJson(att_group_info, group, group_similar, test_row, row,
                         group_matching[type].append(group_att)
     return pd.io.json.dumps(group_matching)
 
+
 def checkMatching(att_group_info, group, group_exact, group_similar,filter_col, filter_val, matching_id,exactAtt, exactValue, fuzzyAtt, fuzzyValue, customer_columns, address_columns, phone_columns, email_columns, row, mode='customer'):
+    """
+    Check Matcing for Running for al the testing rows
+    """
+    start = time.time()
+    print('Rowise Execution for {} and starting from {} '.format( matching_id, start))
     # url = r"postgresql://{}:{}@{}:{}/{}".format(username,quote_plus(password),host,port,database)
     if len(exactAtt)!=0 or len(group_exact)!=0:
         exact_String = createExactstring(exactAtt, exactValue, customer_columns, address_columns, phone_columns, email_columns, mode)
@@ -184,6 +190,8 @@ def checkMatching(att_group_info, group, group_exact, group_similar,filter_col, 
         exact_Query = createExactQuery(filter_col, filter_val, exact_String, group_exact_String, filter_table, mode)
         if exact_String!='' or group_exact_String!='':
             exact_match = pd.read_sql(exact_Query,engine)
+            exact_query_creation = time.time()
+            print('The Exact Query Creation and Execution Time  : ', exact_query_creation - start)
             if not exact_match.empty:
                 exact_match['matching_score'] = 1.0
                 if mode=='customer':
@@ -195,6 +203,8 @@ def checkMatching(att_group_info, group, group_exact, group_similar,filter_col, 
                 exact_match['matching_attributes'] = exact_match.apply(lambda x: createMatchingAttributesJson(exactAtt, exactValue, x, mode='exact'), axis = 1)
                 exact_match['group_matching'] = exact_match.apply(lambda x: createGroupMatchingJson(att_group_info, group, group_similar, row, x, mode='exact'), axis = 1)
                 return exact_match
+    exact_out = time.time()
+    print('Out of Exact Query Bounds', exact_out - start)
     if len(fuzzyAtt)!=0 or len(group_similar)!=0:
         Similarity_string = ''
         Addition_String = ''
@@ -211,8 +221,12 @@ def checkMatching(att_group_info, group, group_exact, group_similar,filter_col, 
         else:
             Add_count = len(fuzzyAtt)+len(exactAtt)
         similar_Query = createSimilarQuery(filter_col, filter_val, Similarity_string, Addition_String, group_similar_String, Add_count, mode)
+        similar_query_creation = time.time()
+        print('The Similar Query Creation Time  : ', similar_query_creation - start)
         if Similarity_string!='' or group_similar_String!='':
             similar_match = pd.read_sql(similar_Query,engine)
+            similar_query_execution = time.time()
+            print('The Similar Query Execution Time  : ', similar_query_execution - start)
             if similar_match.empty:
                 return pd.DataFrame()
             similar_match = similar_match.sort_values(by = 'matching_score', ascending = False)
@@ -230,10 +244,16 @@ def checkMatching(att_group_info, group, group_exact, group_similar,filter_col, 
             final['group_matching'] = final.apply(lambda x: createGroupMatchingJson(att_group_info, group, group_similar, row, x), axis = 1)
             final.drop(score_col_list, axis = 1, inplace = True)
             final.drop(group_score_list, axis = 1, inplace = True)
+            similar_query_end = time.time()
+            print('The Similarity End Time  : ', similar_query_end - start)
             return final
         else:
+            similar_query_end = time.time()
+            print('The Similarity End Time  : ', similar_query_end - start)
             return pd.DataFrame()
     else:
+        similar_query_end = time.time()
+        print('The Similarity End Time  : ', similar_query_end - start)
         return pd.DataFrame()
 
 def longestCommonSubstringScore(string1,string2): 
@@ -455,8 +475,8 @@ app = Flask(__name__)
 
 @app.route('/get_results', methods = ['POST'])
 def Run():
-    request_data = pd.io.json.loads(request.data)
     try:
+        start = time.time()
         # request_data = eval(pd.io.json.loads(request.data))
         # data_df = pd.read_json(request_data)
         request_data = request.json
@@ -475,6 +495,7 @@ def Run():
         if filter not in all_cols:
             filter = ''
         att_group_info = {}
+        
         if group!=[]:
             for type in group.keys():
                 if group[type]['match-type']=='exact':
@@ -494,14 +515,8 @@ def Run():
         # group_att = list(set.intersection(set(group_att), set(all_cols)))
 
         # group_types = list(request_data['action-group'].keys())
-        global Dict
-        Dict = {}
-        global Similarity_Dict
-        Similarity_Dict = {}
-        global Identifier_Dict
-        Identifier_Dict = {'Email' : 'EmailID', 'PhoneNumber':'PhoneID', 'Street':'AddressID', 'Street2':'AddressID', 'City':'AddressID',
-                        'StateCode':'AddressID', 'PostalCode':'AddressID', 'County':'AddressID','GeoCode':'AddressID', 'CountryCode':'AddressID'}
-
+        initialization = time.time()
+        print('time until execution : ', initialization - start)
         if test['data_type'].iloc[0]=='customer':
             # similar_exact = ['zip','city','country','state']
             # similar_exact = []
@@ -510,13 +525,12 @@ def Run():
             
             exactAtt = [att for att in set.intersection(set(all_cols),set(exactAtt))]
             fuzzyAtt = [att for att in set.intersection(set(all_cols),set(fuzzyAtt))]
-            prod_pid = test
             
             if filter!='':
-                prod_pid['df'] = prod_pid.apply(lambda x : checkMatching(att_group_info,group,group_exact,group_similar, filter, x[filter], x[test_identifier], exactAtt, list(x[exactAtt]), fuzzyAtt, list(x[fuzzyAtt]), list(customer['column_name']), list(address['column_name']), list(phone['column_name']), list(email['column_name']),x)
+                test['df'] = test.apply(lambda x : checkMatching(att_group_info,group,group_exact,group_similar, filter, x[filter], x[test_identifier], exactAtt, list(x[exactAtt]), fuzzyAtt, list(x[fuzzyAtt]), list(customer['column_name']), list(address['column_name']), list(phone['column_name']), list(email['column_name']),x)
                             , axis = 1)
             else:
-                prod_pid['df'] = prod_pid.apply(lambda x : checkMatching(att_group_info,group,group_exact,group_similar,filter, '', x[test_identifier], exactAtt, list(x[exactAtt]), fuzzyAtt, list(x[fuzzyAtt]), list(customer['column_name']), list(address['column_name']), list(phone['column_name']), list(email['column_name']),x)
+                test['df'] = test.apply(lambda x : checkMatching(att_group_info,group,group_exact,group_similar,filter, '', x[test_identifier], exactAtt, list(x[exactAtt]), fuzzyAtt, list(x[fuzzyAtt]), list(customer['column_name']), list(address['column_name']), list(phone['column_name']), list(email['column_name']),x)
                             , axis = 1)
         elif test['data_type'].iloc[0]=='product':
             similar_exact = ['parent_leaf_guid', 'mfg_brand_name', 'price', 'parts_accessories_type', 'product_length_in','manufacturer_warranty',
@@ -528,27 +542,30 @@ def Run():
             product_cols = list(product['column_name'])
             exactAtt = [att for att in set.intersection(set(product_cols),set(exactAtt))]
             fuzzyAtt = [att for att in set.intersection(set(product_cols),set(fuzzyAtt))]
-            prod_pid = test
             
             if filter!='':
-                prod_pid['df'] = prod_pid.apply(lambda x : checkMatching(att_group_info,group,group_exact,group_similar, filter, x[filter], x[test_identifier], exactAtt, list(x[exactAtt]), fuzzyAtt, list(x[fuzzyAtt]), list(customer['column_name']), list(address['column_name']), list(phone['column_name']), list(email['column_name']),x, mode='product')
+                test['df'] = test.apply(lambda x : checkMatching(att_group_info,group,group_exact,group_similar, filter, x[filter], x[test_identifier], exactAtt, list(x[exactAtt]), fuzzyAtt, list(x[fuzzyAtt]), list(customer['column_name']), list(address['column_name']), list(phone['column_name']), list(email['column_name']),x, mode='product')
                             , axis = 1)
             else:
-                prod_pid['df'] = prod_pid.apply(lambda x : checkMatching(att_group_info,group,group_exact,group_similar,filter, '', x[test_identifier], exactAtt, list(x[exactAtt]), fuzzyAtt, list(x[fuzzyAtt]), list(customer['column_name']), list(address['column_name']), list(phone['column_name']), list(email['column_name']),x, mode='product')
+                test['df'] = test.apply(lambda x : checkMatching(att_group_info,group,group_exact,group_similar,filter, '', x[test_identifier], exactAtt, list(x[exactAtt]), fuzzyAtt, list(x[fuzzyAtt]), list(customer['column_name']), list(address['column_name']), list(phone['column_name']), list(email['column_name']),x, mode='product')
                             , axis = 1)
+        after_execution = time.time()
+        print('time after execution : ', after_execution - start)
         Dataframe = pd.DataFrame()
-        for i in range(len(prod_pid)):
-            prod_row = prod_pid.iloc[i]
+        for i in range(len(test)):
+            prod_row = test.iloc[i]
             df = prod_row['df']
             if df.empty:
                 continue
             Dataframe = pd.concat([Dataframe,df.reset_index(drop=True)], ignore_index=True)
         Dataframe = Dataframe.loc[:,~Dataframe.columns.duplicated(keep='first')]
+        final_time = time.time()
+        print('The Ending Time  : ', final_time - start)
         return Dataframe.reset_index(drop=True).to_dict(orient = 'records')
     except Exception as e:
         dict = {
             'Error' : str(e),
-            'check' : request_data
+            'check' : request.data
         }
         return jsonify(dict)
 
